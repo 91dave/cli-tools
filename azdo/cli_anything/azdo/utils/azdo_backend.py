@@ -170,6 +170,7 @@ def api_request(
     project: Optional[str] = None,
     use_project: bool = True,
     content_type: str = "application/json",
+    api_version: Optional[str] = None,
 ) -> Any:
     """Make an authenticated request to the Azure DevOps API.
 
@@ -203,7 +204,7 @@ def api_request(
         "Content-Type": content_type,
     }
 
-    all_params = {"api-version": API_VERSION}
+    all_params = {"api-version": api_version or API_VERSION}
     if params:
         all_params.update(params)
 

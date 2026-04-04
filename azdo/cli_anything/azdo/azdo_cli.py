@@ -21,6 +21,7 @@ import click
 from cli_anything.azdo.core import auth as auth_mod
 from cli_anything.azdo.core import workitems as workitems_mod
 from cli_anything.azdo.core import wiql as wiql_mod
+from cli_anything.azdo.core import comments as comments_mod
 
 # Global state
 _json_output = False
@@ -234,6 +235,49 @@ def workitem_create(work_item_type, title, state, parent_id, field):
 
 
 # ══════════════════════════════════════════════════════════════════
+# COMMENT COMMANDS
+# ══════════════════════════════════════════════════════════════════
+
+@cli.group()
+def comment():
+    """Work item comment operations."""
+    pass
+
+
+@comment.command("list")
+@click.argument("work_item_id", type=int)
+@handle_error
+def comment_list(work_item_id):
+    """List comments on a work item."""
+    result = comments_mod.list_comments(work_item_id)
+    if _json_output:
+        output(result)
+    else:
+        if result["count"] == 0:
+            click.echo("No comments.")
+        else:
+            click.echo(f"{result['count']} comment(s):")
+            click.echo()
+            for c in result["comments"]:
+                click.echo(f"  [{c['author']}] ({c['date'][:16].replace('T', ' ')})")
+                click.echo(f"    {c['text_plain']}")
+                click.echo()
+
+
+@comment.command("add")
+@click.argument("work_item_id", type=int)
+@click.argument("text")
+@handle_error
+def comment_add(work_item_id, text):
+    """Add a comment to a work item."""
+    result = comments_mod.add_comment(work_item_id, text)
+    if _json_output:
+        output(result)
+    else:
+        click.echo(f"✓ Comment {result['id']} added by {result['author']}")
+
+
+# ══════════════════════════════════════════════════════════════════
 # QUERY COMMANDS
 # ══════════════════════════════════════════════════════════════════
 
@@ -281,6 +325,7 @@ def repl():
     _repl_commands = {
         "auth":     "set-defaults|status",
         "workitem": "show|list|search|children|update|create",
+        "comment":  "list|add",
         "query":    "run|mine",
         "help":     "Show this help",
         "quit":     "Exit REPL",
