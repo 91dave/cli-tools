@@ -16,7 +16,7 @@ from cli_anything.azdo.core.wiql import build_query, run_wiql
 BATCH_SIZE = 200
 
 
-def _flatten_workitem(raw: dict) -> dict:
+def _flatten_workitem(raw: dict, extra_fields: list[str] | None = None) -> dict:
     """Extract key fields from a raw Azure DevOps work item response.
 
     Resolves AssignedTo to a display name string and extracts
@@ -24,6 +24,8 @@ def _flatten_workitem(raw: dict) -> dict:
 
     Args:
         raw: Raw work item dict from the API.
+        extra_fields: Optional list of additional field reference names
+            to include in the output (e.g. 'Custom.MyField').
 
     Returns:
         Flattened dict with human-friendly field names.
@@ -44,7 +46,7 @@ def _flatten_workitem(raw: dict) -> dict:
         rel_type = rel.get("rel", "")
         url = rel.get("url", "")
         # Extract ID from URL
-        match = re.search(r"/workitems/(\d+)$", url)
+        match = re.search(r"/workitems/(\d+)$", url, re.IGNORECASE)
         if not match:
             continue
         linked_id = int(match.group(1))
@@ -54,7 +56,7 @@ def _flatten_workitem(raw: dict) -> dict:
         elif rel_type == "System.LinkTypes.Hierarchy-Forward":
             children.append(linked_id)
 
-    return {
+    result = {
         "id": raw.get("id"),
         "title": fields.get("System.Title"),
         "state": fields.get("System.State"),
@@ -71,6 +73,12 @@ def _flatten_workitem(raw: dict) -> dict:
         "rev": raw.get("rev"),
         "url": raw.get("url"),
     }
+
+    if extra_fields:
+        for field_name in extra_fields:
+            result[field_name] = fields.get(field_name)
+
+    return result
 
 
 def _batch_get_workitems(ids: list[int], expand: str = "all") -> list[dict]:
@@ -100,11 +108,16 @@ def _batch_get_workitems(ids: list[int], expand: str = "all") -> list[dict]:
     return results
 
 
-def get_workitem(work_item_id: int) -> dict:
+def get_workitem(
+    work_item_id: int,
+    extra_fields: list[str] | None = None,
+) -> dict:
     """Get a single work item by ID with all fields and relations.
 
     Args:
         work_item_id: The work item ID.
+        extra_fields: Optional list of additional field reference names
+            to include in the output.
 
     Returns:
         Flattened work item dict.
@@ -116,7 +129,41 @@ def get_workitem(work_item_id: int) -> dict:
         f"/wit/workitems/{work_item_id}",
         params={"$expand": "all"},
     )
-    return _flatten_workitem(raw)
+    return _flatten_workitem(raw, extra_fields=extra_fields)
+
+
+def get_workitem_fields(
+    work_item_id: int,
+    field_names: list[str] | None = None,
+) -> dict:
+    """Get all raw fields for a work item, including custom fields.
+
+    Args:
+        work_item_id: The work item ID.
+        field_names: Optional list of specific field names to return.
+            If None, returns all fields.
+
+    Returns:
+        Dict with 'id' and 'fields' (sorted dict of field name → value).
+
+    Raises:
+        RuntimeError: If the work item is not found.
+    """
+    raw = api_get(
+        f"/wit/workitems/{work_item_id}",
+        params={"$expand": "all"},
+    )
+    all_fields = raw.get("fields", {})
+
+    if field_names:
+        filtered = {name: all_fields.get(name) for name in field_names}
+    else:
+        filtered = dict(sorted(all_fields.items()))
+
+    return {
+        "id": raw.get("id"),
+        "fields": filtered,
+    }
 
 
 def list_workitems(

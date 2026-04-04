@@ -7,6 +7,7 @@ import pytest
 
 from cli_anything.azdo.core.workitems import (
     get_workitem,
+    get_workitem_fields,
     list_workitems,
     search_workitems,
     get_children,
@@ -37,25 +38,27 @@ SAMPLE_WORKITEM = {
         "System.ChangedDate": "2026-03-20T14:00:00Z",
         "System.Description": "<p>Login fails intermittently</p>",
         "System.Tags": "bug; urgent",
+        "Custom.DesignNotes": "Some design notes",
+        "Microsoft.VSTS.Common.StackRank": 1.5,
     },
     "relations": [
         {
             "rel": "System.LinkTypes.Hierarchy-Reverse",
-            "url": "https://dev.azure.com/MyOrg/_apis/wit/workitems/100",
+            "url": "https://dev.azure.com/MyOrg/_apis/wit/workItems/100",
             "attributes": {"name": "Parent"},
         },
         {
             "rel": "System.LinkTypes.Hierarchy-Forward",
-            "url": "https://dev.azure.com/MyOrg/_apis/wit/workitems/201",
+            "url": "https://dev.azure.com/MyOrg/_apis/wit/workItems/201",
             "attributes": {"name": "Child"},
         },
         {
             "rel": "System.LinkTypes.Hierarchy-Forward",
-            "url": "https://dev.azure.com/MyOrg/_apis/wit/workitems/202",
+            "url": "https://dev.azure.com/MyOrg/_apis/wit/workItems/202",
             "attributes": {"name": "Child"},
         },
     ],
-    "url": "https://dev.azure.com/MyOrg/_apis/wit/workitems/123",
+    "url": "https://dev.azure.com/MyOrg/_apis/wit/workItems/123",
 }
 
 SAMPLE_WORKITEM_NO_RELATIONS = {
@@ -320,3 +323,132 @@ class TestCreateWorkitem:
         create_workitem("Task", {"System.Title": "Test"})
         call_kwargs = mock_post.call_args[1]
         assert call_kwargs.get("content_type") == "application/json-patch+json"
+
+
+# ── TestFlattenWorkitem — case-insensitive URL matching ──────────
+
+SAMPLE_WORKITEM_REAL_CASE = {
+    "id": 789,
+    "rev": 3,
+    "fields": {
+        "System.Title": "Case test",
+        "System.State": "Active",
+        "System.WorkItemType": "Task",
+    },
+    "relations": [
+        {
+            "rel": "System.LinkTypes.Hierarchy-Reverse",
+            "url": "https://dev.azure.com/MyOrg/proj/_apis/wit/workItems/500",
+            "attributes": {"name": "Parent"},
+        },
+        {
+            "rel": "System.LinkTypes.Hierarchy-Forward",
+            "url": "https://dev.azure.com/MyOrg/proj/_apis/wit/workItems/601",
+            "attributes": {"name": "Child"},
+        },
+    ],
+    "url": "https://dev.azure.com/MyOrg/_apis/wit/workItems/789",
+}
+
+
+class TestFlattenWorkitemCaseSensitivity:
+    """Verify relations are extracted regardless of URL casing."""
+
+    def test_flatten_handles_capital_I_workItems(self):
+        result = _flatten_workitem(SAMPLE_WORKITEM_REAL_CASE)
+        assert result["parent_id"] == 500
+        assert result["children"] == [601]
+
+    def test_flatten_handles_lowercase_workitems(self):
+        # Lowercase variant (just in case)
+        raw = {
+            "id": 790,
+            "fields": {"System.Title": "lc test"},
+            "relations": [
+                {
+                    "rel": "System.LinkTypes.Hierarchy-Forward",
+                    "url": "https://dev.azure.com/MyOrg/_apis/wit/workitems/602",
+                    "attributes": {},
+                },
+            ],
+        }
+        result = _flatten_workitem(raw)
+        assert result["children"] == [602]
+
+
+# ── TestFlattenWorkitem — extra_fields support ───────────────────
+
+class TestFlattenWorkitemExtraFields:
+    """Verify _flatten_workitem can include extra fields in output."""
+
+    def test_extra_fields_included_when_requested(self):
+        result = _flatten_workitem(
+            SAMPLE_WORKITEM,
+            extra_fields=["Custom.DesignNotes"],
+        )
+        assert result["Custom.DesignNotes"] == "Some design notes"
+
+    def test_extra_fields_missing_field_is_none(self):
+        result = _flatten_workitem(
+            SAMPLE_WORKITEM,
+            extra_fields=["Custom.DoesNotExist"],
+        )
+        assert result["Custom.DoesNotExist"] is None
+
+    def test_no_extra_fields_by_default(self):
+        result = _flatten_workitem(SAMPLE_WORKITEM)
+        assert "Custom.DesignNotes" not in result
+
+    def test_multiple_extra_fields(self):
+        result = _flatten_workitem(
+            SAMPLE_WORKITEM,
+            extra_fields=["Custom.DesignNotes", "Microsoft.VSTS.Common.StackRank"],
+        )
+        assert result["Custom.DesignNotes"] == "Some design notes"
+        assert result["Microsoft.VSTS.Common.StackRank"] == 1.5
+
+
+# ── TestGetWorkitemFields ────────────────────────────────────────
+
+class TestGetWorkitemFields:
+    """Verify get_workitem_fields returns all raw fields."""
+
+    @patch("cli_anything.azdo.core.workitems.api_get")
+    def test_returns_all_fields(self, mock_get):
+        mock_get.return_value = SAMPLE_WORKITEM
+        result = get_workitem_fields(123)
+        assert result["id"] == 123
+        assert "Custom.DesignNotes" in result["fields"]
+        assert result["fields"]["Custom.DesignNotes"] == "Some design notes"
+        assert result["fields"]["System.Title"] == "Fix login bug"
+
+    @patch("cli_anything.azdo.core.workitems.api_get")
+    def test_returns_field_names_sorted(self, mock_get):
+        mock_get.return_value = SAMPLE_WORKITEM
+        result = get_workitem_fields(123)
+        field_names = list(result["fields"].keys())
+        assert field_names == sorted(field_names)
+
+    @patch("cli_anything.azdo.core.workitems.api_get")
+    def test_specific_field_filter(self, mock_get):
+        mock_get.return_value = SAMPLE_WORKITEM
+        result = get_workitem_fields(123, field_names=["Custom.DesignNotes"])
+        assert "Custom.DesignNotes" in result["fields"]
+        assert "System.Title" not in result["fields"]
+
+    @patch("cli_anything.azdo.core.workitems.api_get")
+    def test_specific_field_not_found(self, mock_get):
+        mock_get.return_value = SAMPLE_WORKITEM
+        result = get_workitem_fields(123, field_names=["Custom.Missing"])
+        assert result["fields"] == {"Custom.Missing": None}
+
+
+# ── TestGetWorkitem — extra_fields pass-through ──────────────────
+
+class TestGetWorkitemExtraFields:
+
+    @patch("cli_anything.azdo.core.workitems.api_get")
+    def test_get_workitem_with_extra_fields(self, mock_get):
+        mock_get.return_value = SAMPLE_WORKITEM
+        result = get_workitem(123, extra_fields=["Custom.DesignNotes"])
+        assert result["Custom.DesignNotes"] == "Some design notes"

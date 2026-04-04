@@ -139,10 +139,12 @@ def workitem():
 
 @workitem.command("show")
 @click.argument("id", type=int)
+@click.option("--field", multiple=True, help="Include extra field by reference name (repeatable)")
 @handle_error
-def workitem_show(id):
+def workitem_show(id, field):
     """Show a work item by ID."""
-    result = workitems_mod.get_workitem(id)
+    extra = field if field else None
+    result = workitems_mod.get_workitem(id, extra_fields=extra)
     output(result, f"Work Item {id}")
 
 
@@ -175,6 +177,17 @@ def workitem_search(text, top):
     """Search work items by title text."""
     results = workitems_mod.search_workitems(text, top=top)
     output(results, f"{len(results)} work item(s) found")
+
+
+@workitem.command("fields")
+@click.argument("id", type=int)
+@click.option("--name", multiple=True, help="Filter to specific field name(s) (repeatable)")
+@handle_error
+def workitem_fields(id, name):
+    """Show all fields for a work item, including custom fields."""
+    field_names = name if name else None
+    result = workitems_mod.get_workitem_fields(id, field_names=field_names)
+    output(result, f"Fields for Work Item {id}")
 
 
 @workitem.command("children")
@@ -324,7 +337,7 @@ def repl():
 
     _repl_commands = {
         "auth":     "set-defaults|status",
-        "workitem": "show|list|search|children|update|create",
+        "workitem": "show|list|search|children|fields|update|create",
         "comment":  "list|add",
         "query":    "run|mine",
         "help":     "Show this help",
