@@ -19,6 +19,8 @@ import shlex
 import click
 
 from cli_anything.azdo.core import auth as auth_mod
+from cli_anything.azdo.core import workitems as workitems_mod
+from cli_anything.azdo.core import wiql as wiql_mod
 
 # Global state
 _json_output = False
@@ -125,6 +127,140 @@ def auth_status():
 
 
 # ══════════════════════════════════════════════════════════════════
+# WORKITEM COMMANDS
+# ══════════════════════════════════════════════════════════════════
+
+@cli.group()
+def workitem():
+    """Work item operations."""
+    pass
+
+
+@workitem.command("show")
+@click.argument("id", type=int)
+@handle_error
+def workitem_show(id):
+    """Show a work item by ID."""
+    result = workitems_mod.get_workitem(id)
+    output(result, f"Work Item {id}")
+
+
+@workitem.command("list")
+@click.option("--state", default=None, help="Filter by state (e.g. Active, Closed)")
+@click.option("--type", "work_item_type", default=None, help="Filter by type (e.g. Bug, Task)")
+@click.option("--assigned-to", default=None, help="Filter by assignee (@Me for current user)")
+@click.option("--area", default=None, help="Filter by area path")
+@click.option("--iteration", default=None, help="Filter by iteration path")
+@click.option("--top", default=None, type=int, help="Maximum number of results")
+@handle_error
+def workitem_list(state, work_item_type, assigned_to, area, iteration, top):
+    """List work items matching filters."""
+    results = workitems_mod.list_workitems(
+        state=state,
+        work_item_type=work_item_type,
+        assigned_to=assigned_to,
+        area=area,
+        iteration=iteration,
+        top=top,
+    )
+    output(results, f"{len(results)} work item(s) found")
+
+
+@workitem.command("search")
+@click.argument("text")
+@click.option("--top", default=None, type=int, help="Maximum number of results")
+@handle_error
+def workitem_search(text, top):
+    """Search work items by title text."""
+    results = workitems_mod.search_workitems(text, top=top)
+    output(results, f"{len(results)} work item(s) found")
+
+
+@workitem.command("children")
+@click.argument("id", type=int)
+@handle_error
+def workitem_children(id):
+    """List child work items of a parent."""
+    results = workitems_mod.get_children(id)
+    output(results, f"{len(results)} child work item(s)")
+
+
+@workitem.command("update")
+@click.argument("id", type=int)
+@click.option("--state", default=None, help="Set work item state")
+@click.option("--title", default=None, help="Set work item title")
+@click.option("--assigned-to", default=None, help="Set assignee")
+@click.option("--field", multiple=True, help="Set field as key=value (repeatable)")
+@handle_error
+def workitem_update(id, state, title, assigned_to, field):
+    """Update a work item's fields."""
+    fields = {}
+    if state:
+        fields["System.State"] = state
+    if title:
+        fields["System.Title"] = title
+    if assigned_to:
+        fields["System.AssignedTo"] = assigned_to
+    for f in field:
+        if "=" not in f:
+            raise click.BadParameter(f"Field must be key=value, got: {f}")
+        k, v = f.split("=", 1)
+        fields[k] = v
+    if not fields:
+        raise click.UsageError("No fields specified. Use --state, --title, --assigned-to, or --field.")
+    result = workitems_mod.update_workitem(id, fields)
+    output(result, f"✓ Work item {id} updated")
+
+
+@workitem.command("create")
+@click.option("--type", "work_item_type", required=True, help="Work item type (e.g. Task, Bug)")
+@click.option("--title", required=True, help="Work item title")
+@click.option("--state", default=None, help="Initial state")
+@click.option("--parent", "parent_id", default=None, type=int, help="Parent work item ID")
+@click.option("--field", multiple=True, help="Set field as key=value (repeatable)")
+@handle_error
+def workitem_create(work_item_type, title, state, parent_id, field):
+    """Create a new work item."""
+    fields = {"System.Title": title}
+    if state:
+        fields["System.State"] = state
+    for f in field:
+        if "=" not in f:
+            raise click.BadParameter(f"Field must be key=value, got: {f}")
+        k, v = f.split("=", 1)
+        fields[k] = v
+    result = workitems_mod.create_workitem(work_item_type, fields, parent_id=parent_id)
+    output(result, f"✓ Work item created: {result.get('id')}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# QUERY COMMANDS
+# ══════════════════════════════════════════════════════════════════
+
+@cli.group()
+def query():
+    """WIQL query operations."""
+    pass
+
+
+@query.command("run")
+@click.argument("wiql")
+@handle_error
+def query_run(wiql):
+    """Run a raw WIQL query."""
+    results = wiql_mod.run_wiql(wiql)
+    output(results, f"{len(results)} result(s)")
+
+
+@query.command("mine")
+@handle_error
+def query_mine():
+    """Get active work items assigned to me."""
+    results = wiql_mod.get_my_workitems()
+    output(results, f"{len(results)} work item(s) assigned to me")
+
+
+# ══════════════════════════════════════════════════════════════════
 # REPL
 # ══════════════════════════════════════════════════════════════════
 
@@ -144,6 +280,8 @@ def repl():
 
     _repl_commands = {
         "auth":     "set-defaults|status",
+        "workitem": "show|list|search|children|update|create",
+        "query":    "run|mine",
         "help":     "Show this help",
         "quit":     "Exit REPL",
     }
