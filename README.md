@@ -26,14 +26,14 @@ cd cli-tools/icepanel
 pip install -e ".[dev]"
 ```
 
-### Prerequisites
+### IcePanel
 
-- Python 3.10+
-- An IcePanel account with an API key ([generate one here](https://app.icepanel.io/settings/api-keys))
-
-### After Install
+**Prerequisites:** Python 3.10+, an IcePanel account with an API key ([generate one here](https://app.icepanel.io/settings/api-keys))
 
 ```bash
+# Install
+pip install "cli-anything-icepanel @ git+https://github.com/91dave/cli-tools.git#subdirectory=icepanel"
+
 # Set up authentication
 cli-anything-icepanel auth login
 
@@ -44,10 +44,50 @@ cli-anything-icepanel org list
 cli-anything-icepanel object list
 ```
 
-### Upgrading
+**Upgrading:**
 
 ```bash
 pip install --upgrade --force-reinstall "cli-anything-icepanel @ git+https://github.com/91dave/cli-tools.git#subdirectory=icepanel"
+```
+
+### Azure DevOps
+
+**Prerequisites:** Python 3.10+, [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) installed and logged in (`az login --tenant <TENANT>`)
+
+```bash
+# Install
+pip install "cli-anything-azdo @ git+https://github.com/91dave/cli-tools.git#subdirectory=azdo"
+
+# Configure defaults
+cli-anything-azdo auth set-defaults --org <ORG> --project <PROJECT> --tenant <TENANT>
+
+# Check authentication
+cli-anything-azdo auth status
+
+# Show a work item
+cli-anything-azdo workitem show 12345
+
+# List child work items
+cli-anything-azdo workitem children 12345
+
+# Inspect all fields (including custom fields)
+cli-anything-azdo workitem fields 12345
+
+# Search by title
+cli-anything-azdo workitem search "search text"
+
+# List and add comments
+cli-anything-azdo comment list 12345
+cli-anything-azdo comment add 12345 "A comment"
+
+# Interactive REPL
+cli-anything-azdo
+```
+
+**Upgrading:**
+
+```bash
+pip install --upgrade --force-reinstall "cli-anything-azdo @ git+https://github.com/91dave/cli-tools.git#subdirectory=azdo"
 ```
 
 ## Adding a New CLI
