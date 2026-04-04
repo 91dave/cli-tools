@@ -83,7 +83,24 @@ pytest
 cli-anything-<tool> --help
 ```
 
-### 6. Commit
+### 6. Windows compatibility
+
+These CLIs must work on both Unix and Windows. Avoid Unix-only modules at the
+top level — in particular **do not** `import fcntl` unconditionally. For file
+locking, use a platform check:
+
+```python
+import sys
+
+if sys.platform == "win32":
+    import msvcrt
+    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+else:
+    import fcntl
+    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+```
+
+### 7. Commit
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
