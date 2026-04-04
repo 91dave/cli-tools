@@ -38,3 +38,31 @@ az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 --te
 ```
 
 **PAT fallback**: Set `AZDO_PAT` environment variable to use a Personal Access Token instead.
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AZDO_ORG` | Organization name | From config |
+| `AZDO_PROJECT` | Project name | From config |
+| `AZDO_TENANT` | Azure AD tenant | From config |
+| `AZDO_PAT` | Personal Access Token (fallback) | None |
+
+## Command Groups
+
+| Group | Commands | Description |
+|-------|----------|-------------|
+| `auth` | `status`, `set-defaults` | Authentication and configuration |
+| `workitem` | `show`, `list`, `search`, `children`, `update`, `create` | Work item operations |
+| `comment` | `list`, `add` | Work item comments |
+| `query` | `run`, `mine` | WIQL query operations |
+
+## Running Tests
+
+```bash
+# Unit tests (mocked, no network)
+pytest
+
+# Integration tests (requires az login)
+pytest -m integration
+```

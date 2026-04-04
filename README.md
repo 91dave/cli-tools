@@ -8,6 +8,7 @@ CLI tools for internal platforms and third-party services, built with the
 | CLI | Install | Description |
 |-----|---------|-------------|
 | `cli-anything-icepanel` | `pip install "cli-anything-icepanel @ git+https://github.com/91dave/cli-tools.git#subdirectory=icepanel"` | IcePanel architecture visualization |
+| `cli-anything-azdo` | `pip install "cli-anything-azdo @ git+https://github.com/91dave/cli-tools.git#subdirectory=azdo"` | Azure DevOps work items, queries, and comments |
 
 ## Quick Start
 
