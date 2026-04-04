@@ -13,7 +13,7 @@ Base URL: https://dev.azure.com/{org}/{project}/_apis
 import base64
 import json
 import os
-import fcntl
+import sys
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
@@ -63,7 +63,12 @@ def save_config(config: dict):
     get_config_dir()
     tmp = CONFIG_FILE.with_suffix(".tmp")
     with open(tmp, "w") as f:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         json.dump(config, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
