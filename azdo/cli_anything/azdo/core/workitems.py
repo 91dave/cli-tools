@@ -74,6 +74,11 @@ def _flatten_workitem(raw: dict, extra_fields: list[str] | None = None) -> dict:
         "url": raw.get("url"),
     }
 
+    # Include all Custom.* fields automatically
+    for field_name, value in fields.items():
+        if field_name.startswith("Custom."):
+            result[field_name] = value
+
     if extra_fields:
         for field_name in extra_fields:
             result[field_name] = fields.get(field_name)

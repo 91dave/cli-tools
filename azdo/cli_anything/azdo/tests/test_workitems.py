@@ -110,6 +110,19 @@ class TestFlattenWorkitem:
         result = _flatten_workitem(SAMPLE_WORKITEM_NO_RELATIONS)
         assert result["assigned_to"] is None
 
+    def test_flatten_includes_custom_fields_by_default(self):
+        result = _flatten_workitem(SAMPLE_WORKITEM)
+        assert result["Custom.DesignNotes"] == "Some design notes"
+
+    def test_flatten_excludes_non_custom_non_system_fields(self):
+        result = _flatten_workitem(SAMPLE_WORKITEM)
+        assert "Microsoft.VSTS.Common.StackRank" not in result
+
+    def test_flatten_custom_fields_absent_when_none_exist(self):
+        result = _flatten_workitem(SAMPLE_WORKITEM_NO_RELATIONS)
+        custom_keys = [k for k in result if k.startswith("Custom.")]
+        assert custom_keys == []
+
 
 # ── TestGetWorkitem ──────────────────────────────────────────────
 
@@ -395,9 +408,9 @@ class TestFlattenWorkitemExtraFields:
         )
         assert result["Custom.DoesNotExist"] is None
 
-    def test_no_extra_fields_by_default(self):
+    def test_no_non_custom_extra_fields_by_default(self):
         result = _flatten_workitem(SAMPLE_WORKITEM)
-        assert "Custom.DesignNotes" not in result
+        assert "Microsoft.VSTS.Common.StackRank" not in result
 
     def test_multiple_extra_fields(self):
         result = _flatten_workitem(
