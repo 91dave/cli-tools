@@ -77,7 +77,8 @@ class TestBackendConfig:
 class TestTokenAcquisition:
 
     @patch("cli_anything.azdo.utils.azdo_backend.subprocess.run")
-    def test_get_token_via_az_cli(self, mock_run, monkeypatch):
+    @patch("cli_anything.azdo.utils.azdo_backend.shutil.which", return_value="/usr/bin/az")
+    def test_get_token_via_az_cli(self, mock_which, mock_run, monkeypatch):
         save_config({"tenant": "adammatthewdigital.onmicrosoft.com"})
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -88,11 +89,13 @@ class TestTokenAcquisition:
         assert token == "eyJ0eXAiOiJKV1Q..."
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
+        assert call_args[0] == "/usr/bin/az"
         assert "get-access-token" in call_args
         assert AZDO_RESOURCE_ID in call_args
 
     @patch("cli_anything.azdo.utils.azdo_backend.subprocess.run")
-    def test_get_token_az_cli_failure(self, mock_run, monkeypatch):
+    @patch("cli_anything.azdo.utils.azdo_backend.shutil.which", return_value="/usr/bin/az")
+    def test_get_token_az_cli_failure(self, mock_which, mock_run, monkeypatch):
         save_config({"tenant": "adammatthewdigital.onmicrosoft.com"})
         mock_run.return_value = MagicMock(
             returncode=1,
@@ -100,6 +103,12 @@ class TestTokenAcquisition:
             stderr="ERROR: Please run 'az login'",
         )
         with pytest.raises(RuntimeError, match="az login"):
+            get_token()
+
+    @patch("cli_anything.azdo.utils.azdo_backend.shutil.which", return_value=None)
+    def test_get_token_az_not_found(self, mock_which, monkeypatch):
+        save_config({"tenant": "adammatthewdigital.onmicrosoft.com"})
+        with pytest.raises(RuntimeError, match="Azure CLI.*not found"):
             get_token()
 
     def test_get_token_pat_fallback(self, monkeypatch):

@@ -13,6 +13,7 @@ Base URL: https://dev.azure.com/{org}/{project}/_apis
 import base64
 import json
 import os
+import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -129,9 +130,15 @@ def get_token() -> str:
         RuntimeError: If az CLI fails (e.g. not logged in).
     """
     tenant = get_tenant()
+    az_path = shutil.which("az")
+    if az_path is None:
+        raise RuntimeError(
+            "Azure CLI ('az') not found on PATH. "
+            "Install it from https://learn.microsoft.com/en-us/cli/azure/install-azure-cli"
+        )
     result = subprocess.run(
         [
-            "az", "account", "get-access-token",
+            az_path, "account", "get-access-token",
             "--resource", AZDO_RESOURCE_ID,
             "--tenant", tenant,
             "--query", "accessToken",
