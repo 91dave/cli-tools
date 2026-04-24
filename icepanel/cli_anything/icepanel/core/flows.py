@@ -35,11 +35,32 @@ def _base(lid: str, vid: str) -> str:
     return f"/landscapes/{lid}/versions/{vid}/flows"
 
 
-def list_flows(landscape_id: str | None = None, version_id: str | None = None) -> dict:
-    """List all flows."""
+def list_flows(
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+    name_filter: str | None = None,
+    diagram_id_filter: str | None = None,
+    pinned_filter: bool | None = None,
+) -> dict:
+    """List all flows with optional client-side filtering.
+
+    Args:
+        name_filter: Substring match on flow name (case-insensitive).
+        diagram_id_filter: Exact match on diagramId.
+        pinned_filter: True = pinned only, False = unpinned only, None = all.
+    """
     lid, vid = _lv(landscape_id, version_id)
     data = api_get(_base(lid, vid))
     flows = data.get("flows", [])
+
+    if name_filter:
+        search = name_filter.lower()
+        flows = [f for f in flows if search in f.get("name", "").lower()]
+    if diagram_id_filter:
+        flows = [f for f in flows if f.get("diagramId") == diagram_id_filter]
+    if pinned_filter is not None:
+        flows = [f for f in flows if f.get("pinned") == pinned_filter]
+
     return {"count": len(flows), "flows": [_fmt(f) for f in flows]}
 
 
@@ -276,6 +297,285 @@ def remove_flow_steps(
     """
     lid, vid = _lv(landscape_id, version_id)
     body = {"steps": {"$remove": step_ids}}
+    data = api_patch(f"{_base(lid, vid)}/{flow_id}", body)
+    return data.get("flow", data)
+
+
+# ── Resolution & Step Viewing ────────────────────────────────────
+
+def _build_resolution_maps(diagram_id: str, lid: str, vid: str) -> tuple[dict, dict]:
+    """Build diagram-ID-to-name lookup maps for objects and connections.
+
+    Returns:
+        (obj_map, conn_map) where each maps diagram_id → name string.
+    """
+    from cli_anything.icepanel.core.diagrams import resolve_content
+
+    resolved = resolve_content(diagram_id, lid, vid)
+    obj_map = {o["diagram_id"]: o["name"] for o in resolved["objects"]}
+    conn_map = {c["diagram_id"]: c["name"] for c in resolved["connections"]}
+    return obj_map, conn_map
+
+
+def _build_name_to_id_maps(diagram_id: str, lid: str, vid: str) -> tuple[dict, dict]:
+    """Build name-to-diagram-ID lookup maps for objects and connections.
+
+    Returns:
+        (obj_map, conn_map) where each maps lowercase name → diagram_id.
+    """
+    from cli_anything.icepanel.core.diagrams import resolve_content
+
+    resolved = resolve_content(diagram_id, lid, vid)
+    obj_map = {o["name"].lower(): o["diagram_id"] for o in resolved["objects"]}
+    conn_map = {c["name"].lower(): c["diagram_id"] for c in resolved["connections"]}
+    # Also index connections by "origin → target" pattern
+    for c in resolved["connections"]:
+        pair_key = f"{c['origin'].lower()} \u2192 {c['target'].lower()}"
+        conn_map[pair_key] = c["diagram_id"]
+    return obj_map, conn_map
+
+
+def _format_step_resolved(
+    step: dict,
+    obj_map: dict | None = None,
+    conn_map: dict | None = None,
+) -> dict:
+    """Format a single step, optionally resolving diagram IDs to names."""
+    def _resolve_obj(diag_id):
+        if not diag_id:
+            return None
+        if obj_map:
+            return obj_map.get(diag_id, diag_id)
+        return diag_id
+
+    def _resolve_conn(diag_id):
+        if not diag_id:
+            return None
+        if conn_map:
+            return conn_map.get(diag_id, diag_id)
+        return diag_id
+
+    return {
+        "id": step.get("id", ""),
+        "index": step.get("index", 0),
+        "type": step.get("type", ""),
+        "description": step.get("description", ""),
+        "detailed_description": step.get("detailedDescription", ""),
+        "origin": _resolve_obj(step.get("originId")),
+        "target": _resolve_obj(step.get("targetId")),
+        "via": _resolve_conn(step.get("viaId")),
+        "parent_id": step.get("parentId"),
+        "paths": step.get("paths"),
+        "flow_id": step.get("flowId"),
+    }
+
+
+def resolve_flow_steps(
+    flow_id: str,
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+) -> dict:
+    """Get a flow with all step diagram IDs resolved to human-readable names.
+
+    Fetches the flow, then resolves originId/targetId/viaId in each step
+    via the associated diagram's content.
+
+    Returns:
+        Dict with flow metadata and sorted list of resolved steps.
+    """
+    lid, vid = _lv(landscape_id, version_id)
+    data = api_get(f"{_base(lid, vid)}/{flow_id}")
+    flow = data.get("flow", data)
+
+    diagram_id = flow.get("diagramId", "")
+    obj_map, conn_map = _build_resolution_maps(diagram_id, lid, vid)
+
+    steps_raw = flow.get("steps", {})
+    steps_sorted = sorted(steps_raw.values(), key=lambda s: s.get("index", 0))
+    resolved_steps = [_format_step_resolved(s, obj_map, conn_map) for s in steps_sorted]
+
+    return {
+        "id": flow.get("id", ""),
+        "name": flow.get("name", ""),
+        "diagram_id": diagram_id,
+        "step_count": len(resolved_steps),
+        "steps": resolved_steps,
+    }
+
+
+def list_steps(
+    flow_id: str,
+    resolve: bool = False,
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+) -> dict:
+    """List steps of a flow, optionally with resolved names.
+
+    Args:
+        flow_id: The flow to list steps for.
+        resolve: If True, resolve diagram IDs to names.
+
+    Returns:
+        Dict with count and sorted list of steps.
+    """
+    lid, vid = _lv(landscape_id, version_id)
+    data = api_get(f"{_base(lid, vid)}/{flow_id}")
+    flow = data.get("flow", data)
+
+    obj_map = None
+    conn_map = None
+    if resolve:
+        diagram_id = flow.get("diagramId", "")
+        obj_map, conn_map = _build_resolution_maps(diagram_id, lid, vid)
+
+    steps_raw = flow.get("steps", {})
+    steps_sorted = sorted(steps_raw.values(), key=lambda s: s.get("index", 0))
+    formatted = [_format_step_resolved(s, obj_map, conn_map) for s in steps_sorted]
+
+    return {"count": len(formatted), "flow_id": flow_id, "steps": formatted}
+
+
+# ── Inline Step Creation ─────────────────────────────────────────
+
+def _generate_step_id(length: int = 10) -> str:
+    """Generate a random step ID."""
+    import string
+    import random
+    chars = string.ascii_lowercase + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
+def add_inline_step(
+    flow_id: str,
+    step_type: str = "outgoing",
+    description: str = "",
+    detailed_description: str | None = None,
+    origin_id: str | None = None,
+    target_id: str | None = None,
+    via_id: str | None = None,
+    origin_name: str | None = None,
+    target_name: str | None = None,
+    via_name: str | None = None,
+    index: int | None = None,
+    resolve_names: bool = False,
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+) -> dict:
+    """Add a single step to a flow from inline arguments.
+
+    Supports both raw diagram IDs (origin_id etc.) and human-readable names
+    (origin_name etc.) with resolve_names=True.
+
+    Args:
+        flow_id: The flow to add a step to.
+        step_type: Step type (outgoing, self-action, introduction, etc.).
+        description: Step description.
+        detailed_description: Optional long description.
+        origin_id/target_id/via_id: Raw diagram IDs.
+        origin_name/target_name/via_name: Human names (requires resolve_names).
+        index: Step ordering index.
+        resolve_names: Resolve name args to diagram IDs via diagram content.
+    """
+    lid, vid = _lv(landscape_id, version_id)
+
+    # Resolve names to IDs if requested
+    if resolve_names and (origin_name or target_name or via_name):
+        flow_data = api_get(f"{_base(lid, vid)}/{flow_id}")
+        flow = flow_data.get("flow", flow_data)
+        diagram_id = flow.get("diagramId", "")
+        obj_name_map, conn_name_map = _build_name_to_id_maps(diagram_id, lid, vid)
+
+        if origin_name and not origin_id:
+            origin_id = obj_name_map.get(origin_name.lower(), origin_name)
+        if target_name and not target_id:
+            target_id = obj_name_map.get(target_name.lower(), target_name)
+        if via_name and not via_id:
+            via_id = conn_name_map.get(via_name.lower(), via_name)
+
+    step_id = _generate_step_id()
+    step: dict[str, Any] = {
+        "id": step_id,
+        "type": step_type,
+        "description": description,
+        "originId": origin_id,
+        "targetId": target_id,
+        "viaId": via_id,
+        "parentId": None,
+        "paths": None,
+        "flowId": None,
+    }
+    if index is not None:
+        step["index"] = index
+    if detailed_description:
+        step["detailedDescription"] = detailed_description
+
+    body = {"steps": {"$add": {step_id: step}}}
+    data = api_patch(f"{_base(lid, vid)}/{flow_id}", body)
+    return data.get("flow", data)
+
+
+# ── Single Step Update ───────────────────────────────────────────
+
+def update_flow_step(
+    flow_id: str,
+    step_id: str,
+    description: str | None = None,
+    detailed_description: str | None = None,
+    origin_id: str | None = None,
+    target_id: str | None = None,
+    via_id: str | None = None,
+    origin_name: str | None = None,
+    target_name: str | None = None,
+    via_name: str | None = None,
+    resolve_names: bool = False,
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+) -> dict:
+    """Update a single step with optional name resolution.
+
+    Supports both raw diagram IDs and human-readable names.
+
+    Args:
+        flow_id: The flow containing the step.
+        step_id: The step ID to update.
+        description: New step description.
+        detailed_description: New long description.
+        origin_id/target_id/via_id: Raw diagram IDs.
+        origin_name/target_name/via_name: Human names (requires resolve_names).
+        resolve_names: Resolve name args to diagram IDs.
+    """
+    lid, vid = _lv(landscape_id, version_id)
+
+    # Resolve names if requested
+    if resolve_names and (origin_name or target_name or via_name):
+        flow_data = api_get(f"{_base(lid, vid)}/{flow_id}")
+        flow = flow_data.get("flow", flow_data)
+        diagram_id = flow.get("diagramId", "")
+        obj_name_map, conn_name_map = _build_name_to_id_maps(diagram_id, lid, vid)
+
+        if origin_name and not origin_id:
+            origin_id = obj_name_map.get(origin_name.lower(), origin_name)
+        if target_name and not target_id:
+            target_id = obj_name_map.get(target_name.lower(), target_name)
+        if via_name and not via_id:
+            via_id = conn_name_map.get(via_name.lower(), via_name)
+
+    fields: dict[str, Any] = {}
+    if description is not None:
+        fields["description"] = description
+    if detailed_description is not None:
+        fields["detailedDescription"] = detailed_description
+    if origin_id is not None:
+        fields["originId"] = origin_id
+    if target_id is not None:
+        fields["targetId"] = target_id
+    if via_id is not None:
+        fields["viaId"] = via_id
+
+    if not fields:
+        raise ValueError("No fields provided for step update.")
+
+    body = {"steps": {"$update": {step_id: fields}}}
     data = api_patch(f"{_base(lid, vid)}/{flow_id}", body)
     return data.get("flow", data)
 

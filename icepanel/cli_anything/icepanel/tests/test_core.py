@@ -732,6 +732,109 @@ class TestAuditLogs:
             assert result["logs"][0]["performed_by"] == "api-key"
 
 
+# ── Model Object Links Tests ─────────────────────────────────────
+
+class TestModelObjectLinks:
+    """Test link list/add/update/remove on model objects."""
+
+    def _patch_defaults(self):
+        return (
+            patch("cli_anything.icepanel.core.model_objects._get_default_landscape_id", return_value="l1"),
+            patch("cli_anything.icepanel.core.model_objects._get_default_version_id", return_value="latest"),
+        )
+
+    @patch("cli_anything.icepanel.core.model_objects.api_get")
+    def test_list_links_returns_formatted(self, mock_get):
+        from cli_anything.icepanel.core.model_objects import list_links
+        mock_get.return_value = {"modelObject": {
+            "id": "obj1",
+            "links": {
+                "lnk1": {"id": "lnk1", "url": "https://github.com/org/repo",
+                          "customName": "GitHub", "index": 0},
+                "lnk2": {"id": "lnk2", "url": "https://example.com",
+                          "customName": None, "index": 1},
+            },
+        }}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_links("obj1")
+            assert result["count"] == 2
+            assert result["object_id"] == "obj1"
+            ids = {l["id"] for l in result["links"]}
+            assert "lnk1" in ids
+            assert "lnk2" in ids
+
+    @patch("cli_anything.icepanel.core.model_objects.api_get")
+    def test_list_links_empty(self, mock_get):
+        from cli_anything.icepanel.core.model_objects import list_links
+        mock_get.return_value = {"modelObject": {"id": "obj1", "links": {}}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_links("obj1")
+            assert result["count"] == 0
+            assert result["links"] == []
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_link_builds_correct_body(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_link
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "links": {}}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_link("obj1", "https://github.com/org/repo", custom_name="GitHub", index=0)
+            body = mock_patch.call_args[0][1]
+            assert "links" in body
+            assert "$add" in body["links"]
+            added = body["links"]["$add"]
+            assert len(added) == 1
+            link_data = list(added.values())[0]
+            assert link_data["url"] == "https://github.com/org/repo"
+            assert link_data["customName"] == "GitHub"
+            assert link_data["index"] == 0
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_link_generates_id(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_link
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "links": {}}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_link("obj1", "https://example.com")
+            body = mock_patch.call_args[0][1]
+            link_id = list(body["links"]["$add"].keys())[0]
+            assert len(link_id) == 20
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_update_link_builds_correct_body(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import update_link
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "links": {}}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_link("obj1", "lnk1", custom_name="Updated")
+            body = mock_patch.call_args[0][1]
+            assert "$update" in body["links"]
+            assert body["links"]["$update"]["lnk1"]["customName"] == "Updated"
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_update_link_url_and_index(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import update_link
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "links": {}}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_link("obj1", "lnk1", url="https://new.url", index=5)
+            body = mock_patch.call_args[0][1]
+            assert body["links"]["$update"]["lnk1"]["url"] == "https://new.url"
+            assert body["links"]["$update"]["lnk1"]["index"] == 5
+
+    def test_update_link_no_fields_raises(self):
+        from cli_anything.icepanel.core.model_objects import update_link
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            with pytest.raises(ValueError, match="No fields"):
+                update_link("obj1", "lnk1")
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_remove_link_builds_correct_body(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import remove_link
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "links": {}}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            remove_link("obj1", "lnk1")
+            body = mock_patch.call_args[0][1]
+            assert "$remove" in body["links"]
+            assert body["links"]["$remove"] == ["lnk1"]
+
+
 # ── Organizations Extended Tests ─────────────────────────────────
 
 class TestOrganizationsExtended:
@@ -765,6 +868,318 @@ class TestOrganizationsExtended:
             assert "alice@example.com" in emails
             perms = {u["permission"] for u in result["users"]}
             assert "admin" in perms
+
+
+# ── Flow Enhancements Tests ──────────────────────────────────────
+
+class TestFlowEnhancements:
+    """Test flow resolution, filtering, update, and inline step creation."""
+
+    def _patch_defaults(self):
+        return (
+            patch("cli_anything.icepanel.core.flows._get_default_landscape_id", return_value="l1"),
+            patch("cli_anything.icepanel.core.flows._get_default_version_id", return_value="latest"),
+        )
+
+    def _sample_flow(self):
+        return {
+            "id": "f1",
+            "name": "Test Flow",
+            "diagramId": "d1",
+            "landscapeId": "l1",
+            "versionId": "v1",
+            "description": "",
+            "createdAt": "",
+            "updatedAt": "",
+            "steps": {
+                "s0": {
+                    "id": "s0", "index": 0, "type": "introduction",
+                    "description": "Overview", "originId": None,
+                    "targetId": None, "viaId": None, "parentId": None,
+                    "paths": None, "flowId": None,
+                },
+                "s1": {
+                    "id": "s1", "index": 1, "type": "outgoing",
+                    "description": "Call API", "originId": "do1",
+                    "targetId": "do2", "viaId": "dc1", "parentId": None,
+                    "paths": None, "flowId": None,
+                },
+                "s2": {
+                    "id": "s2", "index": 2, "type": "self-action",
+                    "description": "Process", "originId": "do2",
+                    "targetId": None, "viaId": None, "parentId": None,
+                    "paths": None, "flowId": None,
+                },
+            },
+        }
+
+    def _sample_resolution(self):
+        return {
+            "object_count": 2,
+            "connection_count": 1,
+            "objects": [
+                {"diagram_id": "do1", "model_id": "mo1", "name": "Service A", "type": "app"},
+                {"diagram_id": "do2", "model_id": "mo2", "name": "Service B", "type": "app"},
+            ],
+            "connections": [
+                {"diagram_id": "dc1", "model_id": "mc1", "name": "REST API",
+                 "origin": "Service A", "target": "Service B"},
+            ],
+        }
+
+    # ── 1. resolve_flow_steps ────────────────────────────────────
+
+    @patch("cli_anything.icepanel.core.diagrams.resolve_content")
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_resolve_flow_steps_maps_ids_to_names(self, mock_get, mock_resolve):
+        from cli_anything.icepanel.core.flows import resolve_flow_steps
+        mock_get.return_value = {"flow": self._sample_flow()}
+        mock_resolve.return_value = self._sample_resolution()
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = resolve_flow_steps("f1")
+            assert result["name"] == "Test Flow"
+            steps = result["steps"]
+            assert len(steps) == 3
+            # Steps should be sorted by index
+            assert steps[0]["type"] == "introduction"
+            assert steps[1]["origin"] == "Service A"
+            assert steps[1]["target"] == "Service B"
+            assert steps[1]["via"] == "REST API"
+            assert steps[2]["origin"] == "Service B"
+
+    @patch("cli_anything.icepanel.core.diagrams.resolve_content")
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_resolve_flow_steps_unknown_ids(self, mock_get, mock_resolve):
+        from cli_anything.icepanel.core.flows import resolve_flow_steps
+        flow = self._sample_flow()
+        flow["steps"]["s1"]["originId"] = "unknown_diag_id"
+        mock_get.return_value = {"flow": flow}
+        mock_resolve.return_value = self._sample_resolution()
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = resolve_flow_steps("f1")
+            # Unknown IDs should fall back to raw ID
+            assert result["steps"][1]["origin"] == "unknown_diag_id"
+
+    # ── 2. list_steps ───────────────────────────────────────────
+
+    @patch("cli_anything.icepanel.core.diagrams.resolve_content")
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_list_steps_resolved(self, mock_get, mock_resolve):
+        from cli_anything.icepanel.core.flows import list_steps
+        mock_get.return_value = {"flow": self._sample_flow()}
+        mock_resolve.return_value = self._sample_resolution()
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_steps("f1", resolve=True)
+            assert result["count"] == 3
+            assert result["steps"][1]["origin"] == "Service A"
+
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_list_steps_unresolved(self, mock_get):
+        from cli_anything.icepanel.core.flows import list_steps
+        mock_get.return_value = {"flow": self._sample_flow()}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_steps("f1", resolve=False)
+            assert result["count"] == 3
+            # Without resolve, origin should be raw diagram ID
+            assert result["steps"][1]["origin"] == "do1"
+
+    # ── 3. update_flow ──────────────────────────────────────────
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_update_flow_name(self, mock_patch):
+        from cli_anything.icepanel.core.flows import update_flow
+        mock_patch.return_value = {"flow": {"id": "f1", "name": "New Name"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_flow("f1", name="New Name")
+            body = mock_patch.call_args[0][1]
+            assert body["name"] == "New Name"
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_update_flow_pinned(self, mock_patch):
+        from cli_anything.icepanel.core.flows import update_flow
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_flow("f1", pinned=True)
+            body = mock_patch.call_args[0][1]
+            assert body["pinned"] is True
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_update_flow_show_flags(self, mock_patch):
+        from cli_anything.icepanel.core.flows import update_flow
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_flow("f1", showAllSteps=True, showConnectionNames=False)
+            body = mock_patch.call_args[0][1]
+            assert body["showAllSteps"] is True
+            assert body["showConnectionNames"] is False
+
+    def test_update_flow_empty_raises(self):
+        from cli_anything.icepanel.core.flows import update_flow
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            with pytest.raises(ValueError, match="No fields"):
+                update_flow("f1")
+
+    # ── 4. add_flow_steps inline ────────────────────────────────
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_add_inline_step_builds_correct_body(self, mock_patch):
+        from cli_anything.icepanel.core.flows import add_inline_step
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_inline_step(
+                "f1", step_type="outgoing",
+                description="Fetch data",
+                origin_id="do1", target_id="do2", via_id="dc1",
+                index=5,
+            )
+            body = mock_patch.call_args[0][1]
+            assert "$add" in body["steps"]
+            added = body["steps"]["$add"]
+            assert len(added) == 1
+            step = list(added.values())[0]
+            assert step["type"] == "outgoing"
+            assert step["description"] == "Fetch data"
+            assert step["originId"] == "do1"
+            assert step["targetId"] == "do2"
+            assert step["viaId"] == "dc1"
+            assert step["index"] == 5
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_add_inline_step_generates_id(self, mock_patch):
+        from cli_anything.icepanel.core.flows import add_inline_step
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_inline_step("f1", step_type="self-action", description="Think")
+            body = mock_patch.call_args[0][1]
+            step_id = list(body["steps"]["$add"].keys())[0]
+            assert len(step_id) >= 8
+
+    @patch("cli_anything.icepanel.core.diagrams.resolve_content")
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_add_inline_step_with_name_resolution(self, mock_patch, mock_get, mock_resolve):
+        from cli_anything.icepanel.core.flows import add_inline_step
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        mock_get.return_value = {"flow": self._sample_flow()}
+        mock_resolve.return_value = self._sample_resolution()
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_inline_step(
+                "f1", step_type="outgoing",
+                description="Call",
+                origin_name="Service A", target_name="Service B",
+                via_name="REST API",
+                resolve_names=True,
+            )
+            body = mock_patch.call_args[0][1]
+            step = list(body["steps"]["$add"].values())[0]
+            assert step["originId"] == "do1"
+            assert step["targetId"] == "do2"
+            assert step["viaId"] == "dc1"
+
+    # ── 5. list_flows with filters ──────────────────────────────
+
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_list_flows_filter_by_name(self, mock_get):
+        from cli_anything.icepanel.core.flows import list_flows
+        mock_get.return_value = {"flows": [
+            {"id": "f1", "name": "Checkout Flow", "diagramId": "d1",
+             "description": "", "landscapeId": "l1", "versionId": "v1",
+             "steps": {}, "createdAt": "", "updatedAt": "", "pinned": False},
+            {"id": "f2", "name": "Login Flow", "diagramId": "d2",
+             "description": "", "landscapeId": "l1", "versionId": "v1",
+             "steps": {}, "createdAt": "", "updatedAt": "", "pinned": True},
+        ]}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_flows(name_filter="checkout")
+            assert result["count"] == 1
+            assert result["flows"][0]["name"] == "Checkout Flow"
+
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_list_flows_filter_by_diagram(self, mock_get):
+        from cli_anything.icepanel.core.flows import list_flows
+        mock_get.return_value = {"flows": [
+            {"id": "f1", "name": "Flow A", "diagramId": "d1",
+             "description": "", "landscapeId": "l1", "versionId": "v1",
+             "steps": {}, "createdAt": "", "updatedAt": "", "pinned": False},
+            {"id": "f2", "name": "Flow B", "diagramId": "d2",
+             "description": "", "landscapeId": "l1", "versionId": "v1",
+             "steps": {}, "createdAt": "", "updatedAt": "", "pinned": False},
+        ]}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_flows(diagram_id_filter="d1")
+            assert result["count"] == 1
+            assert result["flows"][0]["id"] == "f1"
+
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    def test_list_flows_filter_by_pinned(self, mock_get):
+        from cli_anything.icepanel.core.flows import list_flows
+        mock_get.return_value = {"flows": [
+            {"id": "f1", "name": "Flow A", "diagramId": "d1",
+             "description": "", "landscapeId": "l1", "versionId": "v1",
+             "steps": {}, "createdAt": "", "updatedAt": "", "pinned": False},
+            {"id": "f2", "name": "Flow B", "diagramId": "d2",
+             "description": "", "landscapeId": "l1", "versionId": "v1",
+             "steps": {}, "createdAt": "", "updatedAt": "", "pinned": True},
+        ]}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = list_flows(pinned_filter=True)
+            assert result["count"] == 1
+            assert result["flows"][0]["name"] == "Flow B"
+
+    # ── 6. update_step with name resolution ─────────────────────
+
+    @patch("cli_anything.icepanel.core.diagrams.resolve_content")
+    @patch("cli_anything.icepanel.core.flows.api_get")
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_update_step_with_name_resolution(self, mock_patch, mock_get, mock_resolve):
+        from cli_anything.icepanel.core.flows import update_flow_step
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        mock_get.return_value = {"flow": self._sample_flow()}
+        mock_resolve.return_value = self._sample_resolution()
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_flow_step(
+                "f1", "s1",
+                origin_name="Service B", target_name="Service A",
+                via_name="REST API",
+                resolve_names=True,
+            )
+            body = mock_patch.call_args[0][1]
+            updated = body["steps"]["$update"]["s1"]
+            assert updated["originId"] == "do2"  # Service B
+            assert updated["targetId"] == "do1"  # Service A
+            assert updated["viaId"] == "dc1"
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_update_step_with_raw_ids(self, mock_patch):
+        from cli_anything.icepanel.core.flows import update_flow_step
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_flow_step(
+                "f1", "s1",
+                origin_id="do3", description="Updated desc",
+            )
+            body = mock_patch.call_args[0][1]
+            updated = body["steps"]["$update"]["s1"]
+            assert updated["originId"] == "do3"
+            assert updated["description"] == "Updated desc"
+
+    @patch("cli_anything.icepanel.core.flows.api_patch")
+    def test_update_step_detailed_description(self, mock_patch):
+        from cli_anything.icepanel.core.flows import update_flow_step
+        mock_patch.return_value = {"flow": {"id": "f1"}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            update_flow_step(
+                "f1", "s1",
+                detailed_description="Long text here",
+            )
+            body = mock_patch.call_args[0][1]
+            assert body["steps"]["$update"]["s1"]["detailedDescription"] == "Long text here"
+
+    def test_update_step_no_fields_raises(self):
+        from cli_anything.icepanel.core.flows import update_flow_step
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            with pytest.raises(ValueError, match="No fields"):
+                update_flow_step("f1", "s1")
 
 
 # ── Teams Tests ──────────────────────────────────────────────────

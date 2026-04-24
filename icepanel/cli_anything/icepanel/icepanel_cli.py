@@ -509,6 +509,68 @@ def object_export_csv(landscape_id, version_id):
     output(result)
 
 
+@model_object.group("link")
+def object_link():
+    """Manage links (reality links) on model objects."""
+    pass
+
+
+@object_link.command("list")
+@click.argument("object_id")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_link_list(object_id, landscape_id, version_id):
+    """List all links on a model object."""
+    result = obj_mod.list_links(object_id, landscape_id, version_id)
+    output(result, f"Links ({result['count']}) on {object_id}:")
+
+
+@object_link.command("add")
+@click.argument("object_id")
+@click.option("--url", "-u", required=True, help="Link URL")
+@click.option("--name", "-n", default=None, help="Friendly name for the link")
+@click.option("--index", "-i", type=int, default=None, help="Ordering index")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_link_add(object_id, url, name, index, landscape_id, version_id):
+    """Add a link to a model object."""
+    result = obj_mod.add_link(object_id, url, custom_name=name, index=index,
+                              landscape_id=landscape_id, version_id=version_id)
+    output(result, f"\u2713 Link added to {object_id}")
+
+
+@object_link.command("update")
+@click.argument("object_id")
+@click.argument("link_id")
+@click.option("--url", "-u", default=None, help="New URL")
+@click.option("--name", "-n", default=None, help="New friendly name")
+@click.option("--index", "-i", type=int, default=None, help="New ordering index")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_link_update(object_id, link_id, url, name, index, landscape_id, version_id):
+    """Update an existing link on a model object."""
+    result = obj_mod.update_link(object_id, link_id, url=url, custom_name=name,
+                                  index=index, landscape_id=landscape_id,
+                                  version_id=version_id)
+    output(result, f"\u2713 Link {link_id} updated on {object_id}")
+
+
+@object_link.command("remove")
+@click.argument("object_id")
+@click.argument("link_id")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_link_remove(object_id, link_id, landscape_id, version_id):
+    """Remove a link from a model object."""
+    result = obj_mod.remove_link(object_id, link_id, landscape_id=landscape_id,
+                                  version_id=version_id)
+    output(result, f"\u2713 Link {link_id} removed from {object_id}")
+
+
 # ══════════════════════════════════════════════════════════════════
 # CONNECTION COMMANDS
 # ══════════════════════════════════════════════════════════════════
@@ -744,21 +806,31 @@ def flow():
 @flow.command("list")
 @click.option("--landscape-id", "-l", default=None, help="Landscape ID")
 @click.option("--version-id", "-v", default=None, help="Version ID")
+@click.option("--name", "-n", "name_filter", default=None, help="Filter by name (substring)")
+@click.option("--diagram-id", "-d", default=None, help="Filter by diagram ID")
+@click.option("--pinned/--unpinned", "pinned_filter", default=None, help="Filter by pinned status")
 @handle_error
-def flow_list(landscape_id, version_id):
-    """List all flows."""
-    result = flow_mod.list_flows(landscape_id, version_id)
+def flow_list(landscape_id, version_id, name_filter, diagram_id, pinned_filter):
+    """List all flows with optional filters."""
+    result = flow_mod.list_flows(landscape_id, version_id,
+                                  name_filter=name_filter,
+                                  diagram_id_filter=diagram_id,
+                                  pinned_filter=pinned_filter)
     output(result, f"Flows ({result['count']}):")
 
 
 @flow.command("info")
 @click.argument("flow_id")
+@click.option("--resolve", is_flag=True, help="Resolve diagram IDs to human-readable names")
 @click.option("--landscape-id", "-l", default=None, help="Landscape ID")
 @click.option("--version-id", "-v", default=None, help="Version ID")
 @handle_error
-def flow_info(flow_id, landscape_id, version_id):
-    """Get flow details."""
-    result = flow_mod.get_flow(flow_id, landscape_id, version_id)
+def flow_info(flow_id, resolve, landscape_id, version_id):
+    """Get flow details. Use --resolve to show human-readable step names."""
+    if resolve:
+        result = flow_mod.resolve_flow_steps(flow_id, landscape_id, version_id)
+    else:
+        result = flow_mod.get_flow(flow_id, landscape_id, version_id)
     output(result)
 
 
@@ -796,48 +868,120 @@ def flow_delete(flow_id, landscape_id, version_id):
     output(result, "✓ Flow deleted.")
 
 
+@flow.command("update")
+@click.argument("flow_id")
+@click.option("--name", "-n", default=None, help="New flow name")
+@click.option("--pinned/--unpinned", default=None, help="Pin or unpin the flow")
+@click.option("--show-all-steps/--no-show-all-steps", "show_all_steps", default=None,
+              help="Show all steps on diagram")
+@click.option("--show-connection-names/--no-show-connection-names", "show_connection_names",
+              default=None, help="Show connection names on diagram")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def flow_update(flow_id, name, pinned, show_all_steps, show_connection_names,
+               landscape_id, version_id):
+    """Update flow properties (name, pinned, display options)."""
+    kwargs = {}
+    if name is not None:
+        kwargs["name"] = name
+    if pinned is not None:
+        kwargs["pinned"] = pinned
+    if show_all_steps is not None:
+        kwargs["showAllSteps"] = show_all_steps
+    if show_connection_names is not None:
+        kwargs["showConnectionNames"] = show_connection_names
+    result = flow_mod.update_flow(flow_id, landscape_id, version_id, **kwargs)
+    output(result, f"✓ Flow {flow_id} updated.")
+
+
+@flow.command("steps")
+@click.argument("flow_id")
+@click.option("--resolve", is_flag=True, help="Resolve diagram IDs to human-readable names")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def flow_steps(flow_id, resolve, landscape_id, version_id):
+    """List steps of a flow. Use --resolve for human-readable names."""
+    result = flow_mod.list_steps(flow_id, resolve=resolve,
+                                  landscape_id=landscape_id, version_id=version_id)
+    output(result, f"Steps ({result['count']}) in {flow_id}:")
+
+
 @flow.command("add-step")
 @click.argument("flow_id")
 @click.option("--from-file", "-f", type=click.Path(exists=True),
               help="JSON file containing step definition(s)")
+@click.option("--type", "-t", "step_type",
+              type=click.Choice(["outgoing", "self-action", "introduction",
+                                 "information", "conclusion", "alternate-path",
+                                 "parallel-path", "reply", "subflow"]),
+              default=None, help="Step type (for inline definition)")
+@click.option("--description", "-d", default=None, help="Step description")
+@click.option("--detailed-description", default=None, help="Long description")
+@click.option("--origin-id", default=None, help="Origin diagram object ID")
+@click.option("--target-id", default=None, help="Target diagram object ID")
+@click.option("--via-id", default=None, help="Connection diagram ID")
+@click.option("--origin", "origin_name", default=None, help="Origin object name (use with --resolve-names)")
+@click.option("--target", "target_name", default=None, help="Target object name (use with --resolve-names)")
+@click.option("--via", "via_name", default=None, help="Connection name (use with --resolve-names)")
+@click.option("--index", "-i", type=int, default=None, help="Step index")
+@click.option("--resolve-names", is_flag=True, help="Resolve object/connection names to diagram IDs")
 @click.option("--landscape-id", "-l", default=None, help="Landscape ID")
 @click.option("--version-id", "-v", default=None, help="Version ID")
 @handle_error
-def flow_add_step(flow_id, from_file, landscape_id, version_id):
-    """Add steps to an existing flow from a JSON file."""
-    if not from_file:
-        raise click.UsageError("--from-file is required")
-    with open(from_file, "r") as f:
-        steps = json.loads(f.read())
-    result = flow_mod.add_flow_steps(flow_id, steps, landscape_id, version_id)
-    output(result, "✓ Steps added.")
+def flow_add_step(flow_id, from_file, step_type, description, detailed_description,
+                  origin_id, target_id, via_id, origin_name, target_name, via_name,
+                  index, resolve_names, landscape_id, version_id):
+    """Add steps to a flow. Use --from-file for bulk or inline options for a single step."""
+    if from_file:
+        with open(from_file, "r") as f:
+            steps = json.loads(f.read())
+        result = flow_mod.add_flow_steps(flow_id, steps, landscape_id, version_id)
+        output(result, "✓ Steps added from file.")
+    elif step_type:
+        result = flow_mod.add_inline_step(
+            flow_id, step_type=step_type,
+            description=description or "",
+            detailed_description=detailed_description,
+            origin_id=origin_id, target_id=target_id, via_id=via_id,
+            origin_name=origin_name, target_name=target_name, via_name=via_name,
+            index=index, resolve_names=resolve_names,
+            landscape_id=landscape_id, version_id=version_id,
+        )
+        output(result, "✓ Step added.")
+    else:
+        raise click.UsageError("Provide --from-file or --type for inline step definition.")
 
 
 @flow.command("update-step")
 @click.argument("flow_id")
 @click.argument("step_id")
-@click.option("--via-id", default=None, help="Set the connection (viaId)")
 @click.option("--description", "-d", default=None, help="Update description")
+@click.option("--detailed-description", default=None, help="Update long description")
 @click.option("--origin-id", default=None, help="Update origin diagram ID")
 @click.option("--target-id", default=None, help="Update target diagram ID")
+@click.option("--via-id", default=None, help="Set the connection (viaId)")
+@click.option("--origin", "origin_name", default=None, help="Origin object name (use with --resolve-names)")
+@click.option("--target", "target_name", default=None, help="Target object name (use with --resolve-names)")
+@click.option("--via", "via_name", default=None, help="Connection name (use with --resolve-names)")
+@click.option("--resolve-names", is_flag=True, help="Resolve object/connection names to diagram IDs")
 @click.option("--landscape-id", "-l", default=None, help="Landscape ID")
 @click.option("--version-id", "-v", default=None, help="Version ID")
 @handle_error
-def flow_update_step(flow_id, step_id, via_id, description, origin_id, target_id,
-                    landscape_id, version_id):
-    """Update a single step in a flow."""
-    fields = {}
-    if via_id is not None:
-        fields["viaId"] = via_id
-    if description is not None:
-        fields["description"] = description
-    if origin_id is not None:
-        fields["originId"] = origin_id
-    if target_id is not None:
-        fields["targetId"] = target_id
-    if not fields:
-        raise click.UsageError("Provide at least one field to update.")
-    result = flow_mod.update_flow_steps(flow_id, {step_id: fields}, landscape_id, version_id)
+def flow_update_step(flow_id, step_id, description, detailed_description,
+                    origin_id, target_id, via_id, origin_name, target_name,
+                    via_name, resolve_names, landscape_id, version_id):
+    """Update a single step in a flow. Supports name resolution with --resolve-names."""
+    result = flow_mod.update_flow_step(
+        flow_id, step_id,
+        description=description,
+        detailed_description=detailed_description,
+        origin_id=origin_id, target_id=target_id, via_id=via_id,
+        origin_name=origin_name, target_name=target_name, via_name=via_name,
+        resolve_names=resolve_names,
+        landscape_id=landscape_id, version_id=version_id,
+    )
     output(result, f"✓ Step {step_id} updated.")
 
 
@@ -1042,10 +1186,10 @@ def repl():
         "org":        "list|info|landscapes|create-landscape|technologies|users|invite",
         "landscape":  "info|update|delete|duplicate|export|export-status|logs|search",
         "version":    "list|create|info|delete",
-        "object":     "list [--type|--name|--tag|--external]|create|info|update|delete|dependencies|export-csv",
+        "object":     "list [--type|--name|--tag|--external]|create|info|update|delete|dependencies|export-csv|link list|link add|link update|link remove",
         "connection": "list [--name|--origin|--target]|create [--add-to-diagram]|info|update|delete|generate-description|export-csv",
         "diagram":    "list|info|delete|content|resolve|lookup|add-connection|export-image",
-        "flow":       "list|create [--from-file]|info|delete|add-step|update-step|remove-step|export-mermaid|export-text|export-code",
+        "flow":       "list [--name|--diagram-id|--pinned]|create [--from-file]|info [--resolve]|update|delete|steps [--resolve]|add-step [--from-file|--type]|update-step [--resolve-names]|remove-step|export-mermaid|export-text|export-code",
         "tag":        "list|info|objects|groups",
         "domain":     "list|info",
         "team":       "list|info|create|delete",
