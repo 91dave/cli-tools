@@ -22,11 +22,13 @@ _ralph_resolve_prompt() {
 
 # Compose a prompt from agent + mode, substituting named placeholders.
 # Args: $1 = agent name, $2 = mode name, $3 = mode arg (project path or work item)
+#       $4 = "true" if this is the final step in the pipeline (appends completion check)
 # Prints the composed prompt to stdout.
 _ralph_compose_prompt() {
     local agent_name="$1"
     local mode_name="$2"
     local mode_arg="${3:-}"
+    local is_final_step="${4:-false}"
 
     local agent_file mode_file
     agent_file=$(_ralph_resolve_prompt "agents" "$agent_name")
@@ -59,6 +61,15 @@ _ralph_compose_prompt() {
         step_context=$'\n## Context from Previous Steps\n'"$(cat .ralph-step-context)"
     fi
     prompt="${prompt//\{\{context\}\}/$step_context}"
+
+    # Append completion check prompt for the final step
+    if [[ "$is_final_step" == true ]]; then
+        local completion_file
+        completion_file=$(_ralph_resolve_prompt "system" "completion")
+        if [[ -n "$completion_file" ]]; then
+            prompt="${prompt}"$'\n\n'"$(cat "$completion_file")"
+        fi
+    fi
 
     echo "$prompt"
 }
@@ -141,14 +152,21 @@ _ralph_run_loop() {
         rm -f .ralph-step-context
 
         # Run each step in the pipeline
+        local step_count=${#RALPH_STEPS[@]}
+        local step_index=0
         for step in "${RALPH_STEPS[@]}"; do
-            if [[ ${#RALPH_STEPS[@]} -gt 1 ]]; then
+            step_index=$((step_index + 1))
+            local is_final_step=false
+            if [[ $step_index -eq $step_count ]]; then
+                is_final_step=true
+            fi
+
+            if [[ $step_count -gt 1 ]]; then
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')]   Step: $step"
             fi
 
             local prompt
-            prompt=$(_ralph_compose_prompt "$step" "$RALPH_MODE" "$RALPH_TARGET")
-            if [[ $? -ne 0 ]]; then
+            if ! prompt=$(_ralph_compose_prompt "$step" "$RALPH_MODE" "$RALPH_TARGET" "$is_final_step"); then
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] $prompt"
                 return 1
             fi
@@ -164,17 +182,21 @@ _ralph_run_loop() {
                 return 0
             fi
 
-            _ralph_check_status "$RALPH_RESULT_TEXT"
-            local status=$?
+            local status=0
+            _ralph_check_status "$RALPH_RESULT_TEXT" || status=$?
 
-            if [[ $status -eq 0 ]]; then
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Plan completed, exiting."
-                return 0
-            elif [[ $status -eq 1 ]]; then
+            # ERROR from any step halts immediately
+            if [[ $status -eq 1 ]]; then
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] $RALPH_ERROR_MSG"
                 return 1
             fi
-            # status 2 = continue to next step/iteration
+
+            # COMPLETE only honoured from the final step
+            if [[ $status -eq 0 && "$is_final_step" == true ]]; then
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Plan completed, exiting."
+                return 0
+            fi
+            # otherwise continue to next step/iteration
         done
     done
 

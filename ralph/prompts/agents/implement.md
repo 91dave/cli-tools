@@ -20,6 +20,8 @@ ONLY WORK ON A SINGLE TASK PER ITERATION.
 If unable to satisfy ALL success criteria, immediately print the following then exit:
 `<status>ERROR: Unable to fulfill all success criteria for TASK</status>`
 
+If there are no remaining tasks to work on, state that no tasks remain and exit without making changes.
+
 ## Step Context
 
 After completing your work, write a file `.ralph-step-context` in the working directory containing:
@@ -28,5 +30,3 @@ After completing your work, write a file `.ralph-step-context` in the working di
 - A one-line summary of what was done
 
 This context will be passed to subsequent steps in the pipeline.
-
-If all tasks are complete, output `<status>COMPLETE</status>`.
