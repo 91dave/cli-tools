@@ -41,9 +41,29 @@ cli-anything-azdo workitem create --parent {{workitem}} --title "<title>" --type
 
 ## Recording Progress
 
-Add a comment to the parent work item {{workitem}} with a progress update:
-- Prefix the comment with `[ralph/{{agent}}]` for attribution.
-- Summarise what was done, any issues encountered, and what remains.
+Add a comment to the parent work item {{workitem}} with a progress update.
+Comments must be well-structured markdown for readability:
+
+- Start with a `[ralph/{{agent}}]` attribution prefix.
+- Use a brief heading or bold summary line stating the outcome.
+- Use bullet points for individual items (files changed, criteria met, issues found).
+- Separate logical sections (what was done, issues, remaining work) clearly.
+- Keep it concise — no filler text or verbose explanations.
+- Use code formatting (backticks) for file names, commands, and identifiers.
+
+Example:
+
+```markdown
+[ralph/{{agent}}]
+
+**Completed: Add user validation endpoint**
+
+- Created `src/Validators/UserValidator.cs` with email and name rules
+- Added unit tests in `tests/UserValidatorTests.cs` (6 passing)
+- Committed as `feat(AB#12345): add user validation endpoint`
+
+**Remaining:** 2 of 4 tasks complete
+```
 
 If unable to update Azure DevOps on completion, output:
 `<status>ERROR: Cannot update Azure DevOps for {{workitem}}</status>`
