@@ -20,14 +20,13 @@ _ralph_resolve_prompt() {
     fi
 }
 
-# Compose a prompt from agent + mode, then substitute {{N}} args.
-# Args: $1 = agent name, $2 = mode name, remaining = positional args
+# Compose a prompt from agent + mode, substituting named placeholders.
+# Args: $1 = agent name, $2 = mode name, $3 = mode arg (project path or work item)
 # Prints the composed prompt to stdout.
 _ralph_compose_prompt() {
     local agent_name="$1"
     local mode_name="$2"
-    shift 2
-    local args=("$@")
+    local mode_arg="${3:-}"
 
     local agent_file mode_file
     agent_file=$(_ralph_resolve_prompt "agents" "$agent_name")
@@ -45,10 +44,21 @@ _ralph_compose_prompt() {
     local prompt
     prompt="$(cat "$agent_file")"$'\n\n'"$(cat "$mode_file")"
 
-    # Substitute {{1}}..{{N}} with positional args
-    for i in $(seq 1 ${#args[@]}); do
-        prompt="${prompt//\{\{$i\}\}/${args[$((i-1))]}}"
-    done
+    # Substitute named placeholders
+    prompt="${prompt//\{\{agent\}\}/$agent_name}"
+
+    # Mode-specific arg placeholder
+    case "$mode_name" in
+        taskfile) prompt="${prompt//\{\{project\}\}/$mode_arg}" ;;
+        azdo)    prompt="${prompt//\{\{workitem\}\}/$mode_arg}" ;;
+    esac
+
+    # Inject step context from previous steps
+    local step_context=""
+    if [[ -f .ralph-step-context ]]; then
+        step_context=$'\n## Context from Previous Steps\n'"$(cat .ralph-step-context)"
+    fi
+    prompt="${prompt//\{\{context\}\}/$step_context}"
 
     echo "$prompt"
 }
@@ -73,18 +83,18 @@ _ralph_check_status() {
 
 # Run the main ralph loop.
 # Uses globals: RALPH_MODE, RALPH_STEPS[], RALPH_ITERATIONS, RALPH_HARNESS,
-#               RALPH_VERBOSE, RALPH_INTERACTIVE, RALPH_PAUSE, RALPH_EXTRA_ARGS[],
+#               RALPH_VERBOSE, RALPH_INTERACTIVE, RALPH_PAUSE, RALPH_TARGET,
 #               RALPH_CLAUDE_MODE, RALPH_DIR
 _ralph_run_loop() {
     # Auto-detect azdo mode from AB#nnn pattern
-    if [[ "$RALPH_MODE" == "taskfile" && ${#RALPH_EXTRA_ARGS[@]} -gt 0 && "${RALPH_EXTRA_ARGS[0]}" =~ ^AB#[0-9]+ ]]; then
+    if [[ "$RALPH_MODE" == "taskfile" && -n "$RALPH_TARGET" && "$RALPH_TARGET" =~ ^AB#[0-9]+ ]]; then
         RALPH_MODE="azdo"
     fi
 
     # Ensure progress.md exists for taskfile mode
-    if [[ "$RALPH_MODE" == "taskfile" && ${#RALPH_EXTRA_ARGS[@]} -gt 0 && -d "${RALPH_EXTRA_ARGS[0]}" && ! -f "${RALPH_EXTRA_ARGS[0]}/progress.md" ]]; then
-        touch "${RALPH_EXTRA_ARGS[0]}/progress.md"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Created ${RALPH_EXTRA_ARGS[0]}/progress.md"
+    if [[ "$RALPH_MODE" == "taskfile" && -n "$RALPH_TARGET" && -d "$RALPH_TARGET" && ! -f "$RALPH_TARGET/progress.md" ]]; then
+        touch "$RALPH_TARGET/progress.md"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Created $RALPH_TARGET/progress.md"
     fi
 
     # Clean up any stale signal files
@@ -92,7 +102,7 @@ _ralph_run_loop() {
 
     local tmpfile
     tmpfile=$(mktemp)
-    trap "rm -f '$tmpfile' .ralph-pause .ralph-stop" RETURN
+    trap "rm -f '$tmpfile' .ralph-pause .ralph-stop .ralph-step-context" RETURN
 
     # Select harness run function
     local run_fn
@@ -127,6 +137,9 @@ _ralph_run_loop() {
 
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] --- Iteration $i of $RALPH_ITERATIONS ---"
 
+        # Clean step context at the start of each iteration
+        rm -f .ralph-step-context
+
         # Run each step in the pipeline
         for step in "${RALPH_STEPS[@]}"; do
             if [[ ${#RALPH_STEPS[@]} -gt 1 ]]; then
@@ -134,7 +147,7 @@ _ralph_run_loop() {
             fi
 
             local prompt
-            prompt=$(_ralph_compose_prompt "$step" "$RALPH_MODE" "${RALPH_EXTRA_ARGS[@]}")
+            prompt=$(_ralph_compose_prompt "$step" "$RALPH_MODE" "$RALPH_TARGET")
             if [[ $? -ne 0 ]]; then
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] $prompt"
                 return 1

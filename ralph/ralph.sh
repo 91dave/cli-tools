@@ -37,14 +37,14 @@ esac
 
 # --- Defaults ---
 RALPH_MODE="taskfile"
-RALPH_STEPS=(implement)
+RALPH_STEPS=(implement review)
 RALPH_ITERATIONS=10
 RALPH_HARNESS="pi"
 RALPH_VERBOSE=false
 RALPH_INTERACTIVE=false
 RALPH_PAUSE=false
 RALPH_CLAUDE_MODE="windows"
-RALPH_EXTRA_ARGS=()
+RALPH_TARGET=""
 
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
@@ -53,13 +53,16 @@ while [[ $# -gt 0 ]]; do
             cat <<'HELP'
 ralph — Autonomous coding agent loop runner
 
-Usage: ralph [options] [-- arg1 arg2 ...]
+Usage: ralph [options] <target>
        ralph pause          Pause after the current iteration
        ralph stop           Stop after the current iteration
 
+Target:
+  A project directory path (taskfile mode) or work item reference like AB#12345 (azdo mode).
+
 Options:
   -m, --mode <mode>        Task mode: taskfile, azdo (default: taskfile, auto-detects azdo from AB#nnn)
-  -s, --steps <agents>     Comma-separated agent steps per iteration (default: implement)
+  -s, --steps <agents>     Comma-separated agent steps per iteration (default: implement,review)
   -n <count>               Max iterations (default: 10, implies -i when 1)
   -i                       Interactive mode (single iteration, no headless flag)
   --harness <pi|claude>    AI harness to use (default: pi)
@@ -79,13 +82,13 @@ Prompt Resolution:
   Mode prompts:   ~/.ralph/modes/<name>.md   →  <ralph>/prompts/modes/<name>.md
 
 Examples:
-  ralph -- /path/to/project                            # taskfile mode, implement only
-  ralph -m azdo -- AB#12345                             # azdo mode
-  ralph -- AB#12345                                     # auto-detects azdo mode
-  ralph -s plan,implement,review -- /path/to/project    # multi-step pipeline
-  ralph --harness claude -- /path/to/project            # use Claude Code
-  ralph -n 1 -- /path/to/project                        # single interactive iteration
-  ralph -v -- /path/to/project                          # verbose output
+  ralph /path/to/project                               # taskfile mode, implement + review
+  ralph -m azdo AB#12345                                # azdo mode
+  ralph AB#12345                                        # auto-detects azdo mode
+  ralph -s plan,implement,review,test /path/to/project  # custom pipeline
+  ralph --harness claude /path/to/project               # use Claude Code
+  ralph -n 1 /path/to/project                           # single interactive iteration
+  ralph -v /path/to/project                             # verbose output
 HELP
             exit 0
             ;;
@@ -123,11 +126,11 @@ HELP
             ;;
         --)
             shift
-            RALPH_EXTRA_ARGS=("$@")
+            RALPH_TARGET="${1:-}"
             break
             ;;
         *)
-            RALPH_EXTRA_ARGS+=("$1")
+            RALPH_TARGET="$1"
             shift
             ;;
     esac

@@ -11,7 +11,7 @@ ln -sf /path/to/cli-tools/ralph/ralph.sh ~/.local/bin/ralph
 ## Usage
 
 ```bash
-ralph [options] [-- arg1 arg2 ...]
+ralph [options] <target>
 ralph pause          # Pause after the current iteration
 ralph stop           # Stop after the current iteration
 ```
@@ -21,7 +21,7 @@ ralph stop           # Stop after the current iteration
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-m, --mode <mode>` | Task mode: `taskfile`, `azdo` (auto-detects `azdo` from `AB#nnn`) | `taskfile` |
-| `-s, --steps <agents>` | Comma-separated agent steps per iteration | `implement` |
+| `-s, --steps <agents>` | Comma-separated agent steps per iteration | `implement,review` |
 | `-n <count>` | Max iterations (implies `-i` when `1`) | `10` |
 | `-i` | Interactive mode (single iteration, no headless flag) | Off |
 | `--harness <pi\|claude>` | AI harness to use | `pi` |
@@ -56,10 +56,10 @@ An **agent** defines a role for one step of an iteration.
 Each iteration runs a configurable sequence of agents. The default is `implement` only.
 
 ```bash
-ralph -s plan,implement,review -- /path/to/project
+ralph -s plan,implement,review,test /path/to/project
 ```
 
-Each step gets a combined prompt: the agent prompt + the mode prompt, with `{{1}}`…`{{N}}` substituted from positional args.
+Each step gets a combined prompt: the agent prompt + the mode prompt, with named placeholders (`{{project}}`, `{{workitem}}`, `{{agent}}`, `{{context}}`) substituted from the target arg and pipeline state.
 
 ### Harnesses (which AI tool runs it)
 
@@ -109,20 +109,20 @@ Use `-v` to show all tool calls (default hides low-noise tools like read, grep, 
 
 ```bash
 # Task-file workflow (up to 10 iterations)
-ralph -- /path/to/project
+ralph /path/to/project
 
 # Azure DevOps work item (auto-detected)
-ralph -- AB#12345
+ralph AB#12345
 
-# Multi-step pipeline
-ralph -s plan,implement,review -- /path/to/project
+# Custom pipeline
+ralph -s plan,implement,review,test /path/to/project
 
 # Use Claude Code instead of pi
-ralph --harness claude -- /path/to/project
+ralph --harness claude /path/to/project
 
 # Single interactive iteration
-ralph -n 1 -- /path/to/project
+ralph -n 1 /path/to/project
 
 # Verbose output with pause between iterations
-ralph -v --pause -n 5 -- /path/to/project
+ralph -v --pause -n 5 /path/to/project
 ```

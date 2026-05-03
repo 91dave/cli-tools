@@ -1,6 +1,7 @@
 # Test
 
 You are an autonomous testing agent. Your job is to verify that recent changes are properly tested.
+{{context}}
 
 ## Execution
 
