@@ -1,6 +1,8 @@
 """Tests for CLI entry point — command groups, output modes, and invocation."""
 
 import json
+import os
+import tempfile
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 from cli_anything.azdo.azdo_cli import cli
@@ -161,3 +163,58 @@ class TestCliInvocation:
         result = self.runner.invoke(cli, ["workitem", "--help"])
         assert result.exit_code == 0
         assert "fields" in result.output
+
+
+class TestCommentAddCli:
+    """Test the comment add command reads from a markdown file."""
+
+    def setup_method(self):
+        self.runner = CliRunner()
+
+    @patch("cli_anything.azdo.core.comments.add_comment")
+    def test_comment_add_reads_file(self, mock_add):
+        """comment add reads markdown from a file path."""
+        mock_add.return_value = {
+            "id": 1,
+            "author": "Dave",
+            "author_email": "dave@test.com",
+            "date": "2026-01-01T12:00:00Z",
+            "text": "<p>Hello <strong>world</strong></p>",
+            "text_plain": "Hello world",
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("Hello **world**\n\n- item one\n- item two\n")
+            f.flush()
+            try:
+                result = self.runner.invoke(cli, ["comment", "add", "12345", f.name])
+                assert result.exit_code == 0
+                mock_add.assert_called_once()
+                args, _ = mock_add.call_args
+                assert args[0] == 12345
+                # The markdown content should be passed through
+                assert "Hello **world**" in args[1]
+                assert "- item one" in args[1]
+            finally:
+                os.unlink(f.name)
+
+    def test_comment_add_nonexistent_file_errors(self):
+        """comment add with a nonexistent file shows an error."""
+        result = self.runner.invoke(cli, ["comment", "add", "12345", "/tmp/no-such-file-abc123.md"])
+        assert result.exit_code != 0
+
+    @patch("cli_anything.azdo.core.comments.add_comment")
+    def test_comment_add_reads_stdin_with_dash(self, mock_add):
+        """comment add with '-' reads markdown from stdin."""
+        mock_add.return_value = {
+            "id": 2,
+            "author": "Dave",
+            "author_email": "dave@test.com",
+            "date": "2026-01-01T12:00:00Z",
+            "text": "<p>from stdin</p>",
+            "text_plain": "from stdin",
+        }
+        result = self.runner.invoke(cli, ["comment", "add", "12345", "-"], input="from stdin\n")
+        assert result.exit_code == 0
+        mock_add.assert_called_once()
+        args, _ = mock_add.call_args
+        assert "from stdin" in args[1]

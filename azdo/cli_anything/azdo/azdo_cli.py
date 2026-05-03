@@ -279,10 +279,18 @@ def comment_list(work_item_id):
 
 @comment.command("add")
 @click.argument("work_item_id", type=int)
-@click.argument("text")
+@click.argument("file", type=click.Path(exists=True, allow_dash=True))
 @handle_error
-def comment_add(work_item_id, text):
-    """Add a comment to a work item."""
+def comment_add(work_item_id, file):
+    """Add a comment to a work item from a markdown file.
+
+    FILE is a path to a markdown file, or '-' to read from stdin.
+    """
+    if file == "-":
+        text = click.get_text_stream("stdin").read()
+    else:
+        with open(file, "r", encoding="utf-8") as f:
+            text = f.read()
     result = comments_mod.add_comment(work_item_id, text)
     if _json_output:
         output(result)
