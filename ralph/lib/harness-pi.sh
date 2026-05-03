@@ -81,11 +81,11 @@ _ralph_run_pi() {
     else
         pi --mode json --no-session \
             "${pi_file_args[@]}" \
-            -p "$pi_prompt" 2>&1 | tee "$tmpfile" | _ralph_pi_progress_filter "$RALPH_VERBOSE" "$iter_start" "$step_name"
+            -p "$pi_prompt" 2>&1 | tee "$tmpfile" | grep --line-buffered '^{' | _ralph_pi_progress_filter "$RALPH_VERBOSE" "$iter_start" "$step_name" || true
 
-        RALPH_RESULT_TEXT=$(jq -r '
+        RALPH_RESULT_TEXT=$(grep '^{' "$tmpfile" | jq -r '
             select(.type == "agent_end") |
             [.messages[-1].content[] | select(.type == "text") | .text] | join("")
-        ' "$tmpfile" 2>/dev/null)
+        ' 2>/dev/null)
     fi
 }
