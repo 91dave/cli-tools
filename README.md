@@ -3,16 +3,17 @@
 CLI tools for internal platforms and third-party services, built with the
 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) methodology.
 
-## Available CLIs
+## Available Tools
 
-| CLI | Install | Description |
-|-----|---------|-------------|
+| Tool | Install | Description |
+|------|---------|-------------|
 | `cli-anything-icepanel` | `pip install "cli-anything-icepanel @ git+https://github.com/91dave/cli-tools.git#subdirectory=icepanel"` | IcePanel architecture visualization |
 | `cli-anything-azdo` | `pip install "cli-anything-azdo @ git+https://github.com/91dave/cli-tools.git#subdirectory=azdo"` | Azure DevOps work items, queries, and comments |
+| `ralph` | `ln -sf /path/to/cli-tools/ralph/ralph.sh ~/.local/bin/ralph` | Autonomous coding agent loop runner |
 
 ## Quick Start
 
-Install any CLI directly from this repo:
+Install any Python CLI directly from this repo:
 
 ```bash
 pip install "cli-anything-icepanel @ git+https://github.com/91dave/cli-tools.git#subdirectory=icepanel"
@@ -25,6 +26,26 @@ git clone https://github.com/91dave/cli-tools.git
 cd cli-tools/icepanel
 pip install -e ".[dev]"
 ```
+
+### Ralph
+
+Autonomous loop runner that iterates an AI coding agent (pi or Claude Code) over a set of tasks until all work is complete. Supports configurable agent pipelines (`implement`, `plan`, `review`, `test`), task-tracking modes (`taskfile` or Azure DevOps), and customisable prompts.
+
+```bash
+# Install (symlink to PATH)
+ln -sf "$(pwd)/ralph/ralph.sh" ~/.local/bin/ralph
+
+# Run against a task-file project
+ralph /path/to/project
+
+# Run against an Azure DevOps work item (auto-detected)
+ralph AB#12345
+
+# Custom agent pipeline
+ralph -s plan,implement,review,test /path/to/project
+```
+
+See [ralph/README.md](ralph/README.md) for full documentation.
 
 ### IcePanel
 
@@ -90,6 +111,6 @@ cli-anything-azdo
 pip install --upgrade --force-reinstall "cli-anything-azdo @ git+https://github.com/91dave/cli-tools.git#subdirectory=azdo"
 ```
 
-## Adding a New CLI
+## Adding a New Tool
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
