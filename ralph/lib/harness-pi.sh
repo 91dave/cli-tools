@@ -64,6 +64,7 @@ _ralph_run_pi() {
     local prompt="$1"
     local tmpfile="$2"
     local iter_start="$3"
+    local step_name="${4:-}"
 
     # Extract @file references from prompt into separate args
     # (pi requires @files as separate CLI arguments, not inline in prompt text)
@@ -86,6 +87,6 @@ _ralph_run_pi() {
         RALPH_RESULT_TEXT=$(grep '^{' "$tmpfile" | jq -r '
             select(.type == "agent_end") |
             [.messages[-1].content[] | select(.type == "text") | .text] | join("")
-        ' 2>/dev/null)
+        ' 2>/dev/null || true)
     fi
 }
