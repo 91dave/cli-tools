@@ -7,8 +7,6 @@ discussion history.
 from html.parser import HTMLParser
 from typing import Optional
 
-import markdown
-
 from cli_anything.azdo.utils.azdo_backend import api_get, api_post
 
 
@@ -94,22 +92,12 @@ def list_comments(work_item_id: int) -> dict:
     }
 
 
-def _markdown_to_html(md_text: str) -> str:
-    """Convert markdown text to HTML.
-
-    Args:
-        md_text: Markdown-formatted string.
-
-    Returns:
-        HTML string.
-    """
-    return markdown.markdown(md_text, extensions=["fenced_code", "tables"])
-
-
 def add_comment(work_item_id: int, text: str) -> dict:
     """Add a comment to a work item.
 
-    The text is treated as markdown and converted to HTML before posting.
+    The text is treated as markdown. The API's ``format=markdown`` query
+    parameter tells Azure DevOps to render it natively — no client-side
+    conversion is needed.
 
     Args:
         work_item_id: The work item ID.
@@ -118,10 +106,10 @@ def add_comment(work_item_id: int, text: str) -> dict:
     Returns:
         Formatted comment dict of the created comment.
     """
-    html = _markdown_to_html(text)
     result = api_post(
         f"/wit/workitems/{work_item_id}/comments",
-        {"text": html},
+        {"text": text},
+        params={"format": "markdown"},
         api_version=COMMENTS_API_VERSION,
     )
     return _format_comment(result)

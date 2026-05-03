@@ -1,8 +1,6 @@
-"""Tests for comments module — list, add, markdown conversion, and HTML stripping."""
+"""Tests for comments module — list, add, and HTML stripping."""
 
 import json
-import os
-import tempfile
 from unittest.mock import patch, MagicMock, call
 
 import pytest
@@ -12,7 +10,6 @@ from cli_anything.azdo.core.comments import (
     add_comment,
     _format_comment,
     _strip_html,
-    _markdown_to_html,
 )
 
 
@@ -103,79 +100,29 @@ class TestListComments:
 # TestAddComment
 # ══════════════════════════════════════════════════════════════════
 
-class TestMarkdownToHtml:
-    """Tests for markdown-to-HTML conversion."""
-
-    def test_simple_paragraph(self):
-        result = _markdown_to_html("Hello world")
-        assert "<p>Hello world</p>" in result
-
-    def test_bold_text(self):
-        result = _markdown_to_html("**bold**")
-        assert "<strong>bold</strong>" in result
-
-    def test_italic_text(self):
-        result = _markdown_to_html("*italic*")
-        assert "<em>italic</em>" in result
-
-    def test_multiline_preserves_paragraphs(self):
-        md = "First paragraph\n\nSecond paragraph"
-        result = _markdown_to_html(md)
-        assert "<p>First paragraph</p>" in result
-        assert "<p>Second paragraph</p>" in result
-
-    def test_bullet_list(self):
-        md = "- item one\n- item two"
-        result = _markdown_to_html(md)
-        assert "<li>item one</li>" in result
-        assert "<li>item two</li>" in result
-
-    def test_heading(self):
-        result = _markdown_to_html("# Title")
-        assert "<h1>Title</h1>" in result
-
-    def test_code_block(self):
-        md = "```\ncode here\n```"
-        result = _markdown_to_html(md)
-        assert "<code>" in result
-        assert "code here" in result
-
-    def test_inline_code(self):
-        result = _markdown_to_html("`inline`")
-        assert "<code>inline</code>" in result
-
-    def test_link(self):
-        result = _markdown_to_html("[text](https://example.com)")
-        assert 'href="https://example.com"' in result
-        assert ">text</a>" in result
-
-
 class TestAddComment:
 
     @patch("cli_anything.azdo.core.comments.api_post")
-    def test_add_comment_converts_markdown_to_html(self, mock_post):
+    def test_add_comment_posts_raw_markdown(self, mock_post):
+        """add_comment sends raw markdown text without conversion."""
         mock_post.return_value = {
             **SAMPLE_COMMENT,
-            "text": "<p>my comment</p>",
+            "text": "my **bold** comment",
         }
-        add_comment(12345, "my comment")
+        add_comment(12345, "my **bold** comment")
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         assert "12345" in args[0]
         body = args[1] if len(args) > 1 else kwargs.get("data")
-        # The text should be HTML-converted markdown
-        assert "<p>my comment</p>" in body["text"]
+        assert body == {"text": "my **bold** comment"}
 
     @patch("cli_anything.azdo.core.comments.api_post")
-    def test_add_comment_with_rich_markdown(self, mock_post):
+    def test_add_comment_sends_format_markdown_param(self, mock_post):
+        """add_comment passes format=markdown as a query parameter."""
         mock_post.return_value = SAMPLE_COMMENT
-        md = "**bold** and *italic*\n\n- item"
-        add_comment(12345, md)
-        args, _ = mock_post.call_args
-        body = args[1]
-        assert "<strong>bold</strong>" in body["text"]
-        assert "<em>italic</em>" in body["text"]
-        assert "<li>item</li>" in body["text"]
+        add_comment(12345, "test")
+        _, kwargs = mock_post.call_args
+        assert kwargs.get("params") == {"format": "markdown"}
 
     @patch("cli_anything.azdo.core.comments.api_post")
     def test_add_comment_returns_created(self, mock_post):
