@@ -17,13 +17,13 @@ pip install -e .   # from azdo/
 
 **Prerequisites:**
 - Python 3.10+
-- Azure CLI installed and logged in: `az login --tenant adammatthewdigital.onmicrosoft.com`
+- Azure CLI installed and logged in: `az login --tenant your-tenant.onmicrosoft.com`
 
 ## Usage
 
 ```bash
 # Setup
-cli-anything-azdo auth set-defaults --org AMDigitalTech --project Technology --tenant adammatthewdigital.onmicrosoft.com
+cli-anything-azdo auth set-defaults --org AMDigitalTech --project Technology --tenant your-tenant.onmicrosoft.com
 
 # Check auth
 cli-anything-azdo auth status
@@ -101,7 +101,7 @@ cli-anything-azdo workitem update 12345 --state Done
 
 1. **Always use `--json` flag** for parseable output
 2. **Set defaults first** to avoid passing IDs on every call:
-   `auth set-defaults --org AMDigitalTech --project Technology --tenant adammatthewdigital.onmicrosoft.com`
+   `auth set-defaults --org AMDigitalTech --project Technology --tenant your-tenant.onmicrosoft.com`
 3. **Check return codes** — 0 for success, non-zero for errors
 4. **Use env vars** for CI: `AZDO_ORG`, `AZDO_PROJECT`, `AZDO_TENANT`, `AZDO_PAT`
 5. **`query mine`** is the fastest way to get current user's active items

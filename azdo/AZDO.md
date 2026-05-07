@@ -14,7 +14,7 @@ Part of the [cli-anything](https://github.com/HKUDS/CLI-Anything) toolkit.
 2. **Logged in** to the correct tenant:
 
 ```bash
-az login --tenant adammatthewdigital.onmicrosoft.com
+az login --tenant your-tenant.onmicrosoft.com
 ```
 
 ### How It Works
@@ -24,7 +24,7 @@ The CLI acquires a short-lived Bearer token using:
 ```bash
 az account get-access-token \
   --resource 499b84ac-1321-427f-aa17-267ca6975798 \
-  --tenant adammatthewdigital.onmicrosoft.com
+  --tenant your-tenant.onmicrosoft.com
 ```
 
 - **Resource ID** `499b84ac-1321-427f-aa17-267ca6975798` is the Azure DevOps API resource
@@ -46,7 +46,7 @@ This uses Basic auth (`:<PAT>` base64-encoded).
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `az: command not found` | Azure CLI not installed | Install from link above |
-| `AADSTS700016: Application not found` | Wrong tenant | Run `az login --tenant adammatthewdigital.onmicrosoft.com` |
+| `AADSTS700016: Application not found` | Wrong tenant | Run `az login --tenant your-tenant.onmicrosoft.com` |
 | `Token expired` / `401 Unauthorized` | Cached token expired | Run `az login` again |
 | `Identity not materialized` | User exists in AAD but not Azure DevOps | Ask an admin to add you to the Azure DevOps org |
 | `TF400813: Resource not available` | Wrong org or project name | Check `auth set-defaults` values |
@@ -78,7 +78,7 @@ Set default org, project, and tenant so you don't need to specify them on every 
 cli-anything-azdo auth set-defaults \
   --org AMDigitalTech \
   --project Technology \
-  --tenant adammatthewdigital.onmicrosoft.com
+  --tenant your-tenant.onmicrosoft.com
 ```
 
 Config is stored at `~/.cli-anything-azdo/config.json` with `0600` permissions.
@@ -94,7 +94,7 @@ Config is stored at `~/.cli-anything-azdo/config.json` with `0600` permissions.
 cli-anything-azdo auth status
 
 # Set defaults
-cli-anything-azdo auth set-defaults --org AMDigitalTech --project Technology --tenant adammatthewdigital.onmicrosoft.com
+cli-anything-azdo auth set-defaults --org AMDigitalTech --project Technology --tenant your-tenant.onmicrosoft.com
 ```
 
 ### Work Items
