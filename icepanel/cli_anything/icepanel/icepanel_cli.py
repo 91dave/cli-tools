@@ -509,6 +509,63 @@ def object_export_csv(landscape_id, version_id):
     output(result)
 
 
+@model_object.group("tag")
+def object_tag():
+    """Manage tags on model objects."""
+    pass
+
+
+@object_tag.command("add")
+@click.argument("object_id")
+@click.option("--tag-id", "-t", required=True, multiple=True, help="Tag ID(s) to add")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_tag_add(object_id, tag_id, landscape_id, version_id):
+    """Add one or more tags to a model object."""
+    result = obj_mod.add_tags(object_id, list(tag_id),
+                              landscape_id=landscape_id, version_id=version_id)
+    output(result, f"\u2713 Added {len(tag_id)} tag(s) to {object_id}")
+
+
+@object_tag.command("remove")
+@click.argument("object_id")
+@click.option("--tag-id", "-t", required=True, multiple=True, help="Tag ID(s) to remove")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_tag_remove(object_id, tag_id, landscape_id, version_id):
+    """Remove one or more tags from a model object."""
+    result = obj_mod.remove_tags(object_id, list(tag_id),
+                                 landscape_id=landscape_id, version_id=version_id)
+    output(result, f"\u2713 Removed {len(tag_id)} tag(s) from {object_id}")
+
+
+@object_tag.command("list")
+@click.argument("object_id")
+@click.option("--landscape-id", "-l", default=None, help="Landscape ID")
+@click.option("--version-id", "-v", default=None, help="Version ID")
+@handle_error
+def object_tag_list(object_id, landscape_id, version_id):
+    """List tags on a model object (resolved to names)."""
+    obj = obj_mod.get_object(object_id, landscape_id, version_id)
+    tag_ids = obj.get("tag_ids", [])
+    if not tag_ids:
+        output({"object_id": object_id, "count": 0, "tags": []},
+               f"No tags on {object_id}")
+        return
+    tags = []
+    all_tags = tag_mod.list_tags(landscape_id, version_id)
+    tag_map = {t["id"]: t for t in all_tags.get("tags", [])}
+    for tid in tag_ids:
+        if tid in tag_map:
+            tags.append(tag_map[tid])
+        else:
+            tags.append({"id": tid, "name": "unknown"})
+    output({"object_id": object_id, "count": len(tags), "tags": tags},
+           f"Tags ({len(tags)}) on {object_id}:")
+
+
 @model_object.group("link")
 def object_link():
     """Manage links (reality links) on model objects."""
@@ -1186,7 +1243,7 @@ def repl():
         "org":        "list|info|landscapes|create-landscape|technologies|users|invite",
         "landscape":  "info|update|delete|duplicate|export|export-status|logs|search",
         "version":    "list|create|info|delete",
-        "object":     "list [--type|--name|--tag|--external]|create|info|update|delete|dependencies|export-csv|link list|link add|link update|link remove",
+        "object":     "list [--type|--name|--tag|--external]|create|info|update|delete|dependencies|export-csv|tag list|tag add|tag remove|link list|link add|link update|link remove",
         "connection": "list [--name|--origin|--target]|create [--add-to-diagram]|info|update|delete|generate-description|export-csv",
         "diagram":    "list|info|delete|content|resolve|lookup|add-connection|export-image",
         "flow":       "list [--name|--diagram-id|--pinned]|create [--from-file]|info [--resolve]|update|delete|steps [--resolve]|add-step [--from-file|--type]|update-step [--resolve-names]|remove-step|export-mermaid|export-text|export-code",

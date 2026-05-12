@@ -167,6 +167,52 @@ def export_dependencies_json(
     return api_get(f"{_base(lid, vid)}/{object_id}/dependencies/export/json")
 
 
+def add_tags(
+    object_id: str,
+    tag_ids: list[str],
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+) -> dict:
+    """Add tags to a model object.
+
+    Args:
+        object_id: The model object ID.
+        tag_ids: List of tag IDs to add.
+
+    Returns:
+        Formatted model object data.
+    """
+    if not tag_ids:
+        raise ValueError("No tag IDs provided.")
+    lid, vid = _lv(landscape_id, version_id)
+    body = {"tagIds": {"$add": tag_ids}}
+    data = api_patch(f"{_base(lid, vid)}/{object_id}", body)
+    return _fmt(data.get("modelObject", data))
+
+
+def remove_tags(
+    object_id: str,
+    tag_ids: list[str],
+    landscape_id: str | None = None,
+    version_id: str | None = None,
+) -> dict:
+    """Remove tags from a model object.
+
+    Args:
+        object_id: The model object ID.
+        tag_ids: List of tag IDs to remove.
+
+    Returns:
+        Formatted model object data.
+    """
+    if not tag_ids:
+        raise ValueError("No tag IDs provided.")
+    lid, vid = _lv(landscape_id, version_id)
+    body = {"tagIds": {"$remove": tag_ids}}
+    data = api_patch(f"{_base(lid, vid)}/{object_id}", body)
+    return _fmt(data.get("modelObject", data))
+
+
 def _generate_link_id(length: int = 20) -> str:
     """Generate a random alphanumeric ID for a new link."""
     import string

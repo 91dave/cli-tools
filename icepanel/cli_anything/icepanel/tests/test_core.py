@@ -1182,6 +1182,124 @@ class TestFlowEnhancements:
                 update_flow_step("f1", "s1")
 
 
+# ── Model Object Tags Tests ──────────────────────────────────────
+
+class TestModelObjectTags:
+    """Test tag add/remove on model objects."""
+
+    def _patch_defaults(self):
+        return (
+            patch("cli_anything.icepanel.core.model_objects._get_default_landscape_id", return_value="l1"),
+            patch("cli_anything.icepanel.core.model_objects._get_default_version_id", return_value="latest"),
+        )
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_tags_builds_correct_body(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": ["t1", "t2"]}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = add_tags("obj1", ["t1", "t2"])
+            body = mock_patch.call_args[0][1]
+            assert "tagIds" in body
+            assert "$add" in body["tagIds"]
+            assert body["tagIds"]["$add"] == ["t1", "t2"]
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_tags_single_tag(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": ["t1"]}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_tags("obj1", ["t1"])
+            body = mock_patch.call_args[0][1]
+            assert body["tagIds"]["$add"] == ["t1"]
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_tags_calls_correct_endpoint(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": []}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            add_tags("obj1", ["t1"])
+            endpoint = mock_patch.call_args[0][0]
+            assert endpoint == "/landscapes/l1/versions/latest/model/objects/obj1"
+
+    def test_add_tags_empty_list_raises(self):
+        from cli_anything.icepanel.core.model_objects import add_tags
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            with pytest.raises(ValueError, match="No tag IDs"):
+                add_tags("obj1", [])
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_tags_returns_formatted_object(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_tags
+        mock_patch.return_value = {"modelObject": {
+            "id": "obj1", "name": "Test", "type": "app", "status": "",
+            "parentId": None, "parentIds": [], "childIds": [], "caption": "",
+            "description": "", "external": False, "domainId": "",
+            "tagIds": ["t1", "t2"], "technologyIds": [], "teamIds": [],
+            "labels": {}, "links": {}, "createdAt": "", "updatedAt": "",
+        }}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = add_tags("obj1", ["t2"])
+            assert result["tag_ids"] == ["t1", "t2"]
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_remove_tags_builds_correct_body(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import remove_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": []}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            remove_tags("obj1", ["t1", "t2"])
+            body = mock_patch.call_args[0][1]
+            assert "tagIds" in body
+            assert "$remove" in body["tagIds"]
+            assert body["tagIds"]["$remove"] == ["t1", "t2"]
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_remove_tags_single_tag(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import remove_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": ["t2"]}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            remove_tags("obj1", ["t1"])
+            body = mock_patch.call_args[0][1]
+            assert body["tagIds"]["$remove"] == ["t1"]
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_remove_tags_calls_correct_endpoint(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import remove_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": []}}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            remove_tags("obj1", ["t1"])
+            endpoint = mock_patch.call_args[0][0]
+            assert endpoint == "/landscapes/l1/versions/latest/model/objects/obj1"
+
+    def test_remove_tags_empty_list_raises(self):
+        from cli_anything.icepanel.core.model_objects import remove_tags
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            with pytest.raises(ValueError, match="No tag IDs"):
+                remove_tags("obj1", [])
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_remove_tags_returns_formatted_object(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import remove_tags
+        mock_patch.return_value = {"modelObject": {
+            "id": "obj1", "name": "Test", "type": "app", "status": "",
+            "parentId": None, "parentIds": [], "childIds": [], "caption": "",
+            "description": "", "external": False, "domainId": "",
+            "tagIds": ["t2"], "technologyIds": [], "teamIds": [],
+            "labels": {}, "links": {}, "createdAt": "", "updatedAt": "",
+        }}
+        with self._patch_defaults()[0], self._patch_defaults()[1]:
+            result = remove_tags("obj1", ["t1"])
+            assert result["tag_ids"] == ["t2"]
+
+    @patch("cli_anything.icepanel.core.model_objects.api_patch")
+    def test_add_tags_with_explicit_landscape_version(self, mock_patch):
+        from cli_anything.icepanel.core.model_objects import add_tags
+        mock_patch.return_value = {"modelObject": {"id": "obj1", "tagIds": ["t1"]}}
+        add_tags("obj1", ["t1"], landscape_id="custom-l", version_id="custom-v")
+        endpoint = mock_patch.call_args[0][0]
+        assert endpoint == "/landscapes/custom-l/versions/custom-v/model/objects/obj1"
+
+
 # ── Teams Tests ──────────────────────────────────────────────────
 
 class TestTeams:
